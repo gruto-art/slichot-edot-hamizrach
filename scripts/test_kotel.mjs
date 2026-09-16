@@ -1,0 +1,130 @@
+/* ניסוי מעקב על הקלטה: מריץ הקלטת סליחות דרך אותו צינור בדיוק כמו השידור החי
+   (חיתוך -> תמלול -> התאמה) ומדפיס את מסלול הזיהוי, כדי לבדוק אם המעקב עובד.
+
+   שימוש:
+     node scripts/test_kotel.mjs <קובץ-אודיו|כתובת-יוטיוב> [--seconds 180] [--start 0] [--seg 8]
+*/
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Aligner, tokenize } from '../server/matcher.js';
+import { transcribe, kotelConfig, resolveFfmpeg } from '../server/kotel.js';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const args = process.argv.slice(2);
+const src = args.find(a => !a.startsWith('--'));
+const flag = (name, def) => {
+  const i = args.indexOf('--' + name);
+  return i >= 0 ? Number(args[i + 1]) : def;
+};
+const SECONDS = flag('seconds', 180);
+const START = flag('start', 0);
+const SEG = flag('seg', kotelConfig.segSec || 8);
+
+if (!src) {
+  console.error('שימוש: node scripts/test_kotel.mjs <קובץ|כתובת> [--seconds 180] [--start 0]');
+  process.exit(1);
+}
+
+const doc = JSON.parse(fs.readFileSync(path.join(root, 'data/slichot.json'), 'utf8'));
+const words = JSON.parse(fs.readFileSync(path.join(root, 'data/index_words.json'), 'utf8'));
+const aligner = new Aligner(words);
+
+// מיפוי אינדקס מילה -> שם פרק
+const secMap = doc.sections.map(s => {
+  let from = Infinity, to = -1;
+  for (const p of s.paragraphs) for (const w of p.w) { if (w.i < from) from = w.i; if (w.i > to) to = w.i; }
+  return { from, to, title: s.title };
+});
+const sectionFor = i => (secMap.find(s => i >= s.from && i <= s.to) || {}).title || '—';
+const textAt = (i, n = 6) => {
+  const out = [];
+  for (const s of doc.sections) for (const p of s.paragraphs) for (const w of p.w) {
+    if (w.i >= i - n && w.i <= i) out.push(w.t);
+  }
+  return out.join(' ');
+};
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kotel-test-'));
+const ffmpeg = await resolveFfmpeg();
+
+/* ---------- 1. השגת אודיו ---------- */
+let audio = src;
+if (/^https?:/.test(src)) {
+  audio = path.join(tmp, 'src.m4a');
+  console.log('מוריד אודיו מהכתובת…');
+  const r = spawnSync('yt-dlp', ['-q', '--no-warnings', '-f', 'bestaudio[ext=m4a]/bestaudio',
+    '--download-sections', `*${START}-${START + SECONDS}`, '-o', audio, src], { stdio: 'inherit' });
+  if (r.status !== 0 || !fs.existsSync(audio)) { console.error('ההורדה נכשלה'); process.exit(1); }
+}
+
+/* ---------- 2. חיתוך לקטעים, בדיוק כמו בשידור החי ---------- */
+console.log(`חותך לקטעים של ${SEG} שניות…`);
+const segArgs = ['-hide_banner', '-loglevel', 'error'];
+if (!/^https?:/.test(src) && START) segArgs.push('-ss', String(START));
+segArgs.push('-i', audio);
+if (!/^https?:/.test(src)) segArgs.push('-t', String(SECONDS));
+segArgs.push('-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
+  '-segment_time', String(SEG), '-reset_timestamps', '1', path.join(tmp, 'seg%05d.wav'));
+const cut = spawnSync(ffmpeg, segArgs, { stdio: 'inherit' });
+if (cut.status !== 0) { console.error('חיתוך האודיו נכשל'); process.exit(1); }
+
+const segs = fs.readdirSync(tmp).filter(f => f.startsWith('seg') && f.endsWith('.wav')).sort();
+console.log(`נוצרו ${segs.length} קטעים. מתמלל עם ${kotelConfig.provider}…\n`);
+
+/* ---------- 3. תמלול + התאמה, בדיוק כמו במנוע החי ---------- */
+let tail = [], hint = -1, prev = -1;
+const rows = [];
+const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+for (let i = 0; i < segs.length; i++) {
+  const file = path.join(tmp, segs[i]);
+  const at = START + i * SEG;
+  let text = '';
+  try {
+    const buf = fs.readFileSync(file);
+    if (buf.length < 20000) { rows.push({ at, text: '(שקט)', word: null }); continue; }
+    text = await transcribe(buf);
+  } catch (e) {
+    console.error(`  [${mmss(at)}] תמלול נכשל: ${e.message}`);
+    continue;
+  }
+  const toks = tokenize(text);
+  tail = tail.concat(toks).slice(-40);
+  const r = toks.length ? aligner.locate(tail, hint) : null;
+
+  let accepted = false;
+  if (r) {
+    const jump = hint >= 0 ? Math.abs(r.word - hint) : 0;
+    const minConf = jump > 250 ? Math.max(0.45, kotelConfig.minConfidence) : kotelConfig.minConfidence;
+    if (r.confidence >= minConf) { accepted = true; hint = r.word; }
+  }
+  const advance = accepted && prev >= 0 ? r.word - prev : null;
+  if (accepted) prev = r.word;
+
+  rows.push({ at, text, word: accepted ? r.word : null, conf: r?.confidence ?? 0, advance });
+  console.log(`[${mmss(at)}] תמלול: ${text.slice(0, 90)}`);
+  if (accepted) {
+    console.log(`         ↳ מילה ${r.word} · ${sectionFor(r.word)} · ודאות ${r.confidence}` +
+      (advance !== null ? ` · התקדמות ${advance > 0 ? '+' : ''}${advance} מילים` : ''));
+    console.log(`         ↳ בטקסט: …${textAt(r.word)}`);
+  } else {
+    console.log(`         ↳ לא זוהה מיקום${r ? ` (ודאות ${r.confidence} מתחת לסף)` : ''}`);
+  }
+}
+
+/* ---------- 4. סיכום ---------- */
+const hits = rows.filter(r => r.word !== null);
+const forward = hits.filter(r => r.advance !== null && r.advance >= 0 && r.advance < 120).length;
+const jumps = hits.filter(r => r.advance !== null && (r.advance < 0 || r.advance >= 120));
+console.log('\n' + '─'.repeat(60));
+console.log(`קטעים: ${rows.length} · זוהה מיקום ב-${hits.length} (${Math.round(hits.length / rows.length * 100)}%)`);
+console.log(`התקדמות טבעית קדימה: ${forward}/${Math.max(1, hits.length - 1)} מהמעברים`);
+if (jumps.length) console.log(`קפיצות חשודות: ${jumps.length} — ${jumps.map(j => mmss(j.at)).join(', ')}`);
+const avgConf = hits.length ? (hits.reduce((s, r) => s + r.conf, 0) / hits.length).toFixed(2) : 0;
+console.log(`ודאות ממוצעת: ${avgConf}`);
+console.log(`פרקים שזוהו לפי הסדר: ${[...new Set(hits.map(h => sectionFor(h.word)))].join(' → ')}`);
+
+fs.rmSync(tmp, { recursive: true, force: true });

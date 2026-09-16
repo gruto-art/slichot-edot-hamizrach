@@ -8,7 +8,6 @@ OUT = 'data/slichot.json'
 
 # חלוקה לפרקים: (אינדקס פסקה פותחת, כותרת, slug)
 SECTIONS = [
- (0,  'קַמְתִּי בְּאַשְׁמוֹרֶת', 'kamti-beashmoret', 'פתיחת הסליחות'),
  (1,  'אַשְׁרֵי', 'ashrei', 'אשרי יושבי ביתך'),
  (2,  'חֲצִי קַדִּישׁ', 'chatzi-kaddish', 'חצי קדיש'),
  (3,  'בֶּן אָדָם', 'ben-adam', 'בן אדם מה לך נרדם'),
@@ -24,7 +23,6 @@ SECTIONS = [
  (55, 'אֵל מֶלֶךְ וַיַּעֲבֹר', 'el-melech-2', 'אל מלך יושב וי״ג מידות'),
  (57, 'תָּמַהְנוּ מֵרָעוֹת', 'tamahnu', 'תמהנו מרעות'),
  (58, 'אֵל מֶלֶךְ וַיַּעֲבֹר', 'el-melech-3', 'אל מלך יושב וי״ג מידות'),
- (60, 'אֲנַחְנוּ בֹשְׁנוּ', 'anachnu-boshnu', 'אנחנו בושנו במעשינו'),
  (61, 'אַל תַּעַשׂ עִמָּנוּ כָּלָה', 'al-taas-kala', 'אלהינו ואלהי אבותינו'),
  (62, 'רִבּוֹנוֹ שֶׁל עוֹלָם — וִדּוּי', 'ribono-shel-olam', 'ריבונו של עולם, וידוי'),
  (65, 'אָשַׁמְנוּ — וִדּוּי', 'ashamnu', 'אשמנו בגדנו, סדר הווידוי'),
@@ -67,6 +65,9 @@ SECTIONS = [
  (228,'קַדִּישׁ יְהֵא שְׁלָמָא', 'kaddish-2', 'קדיש יהא שלמא'),
 ]
 
+# פסקאות שהוסרו מהסדר לבקשת בעלי האתר
+SKIP_PARAGRAPHS = {0, 60}
+
 SHEM = re.compile(r'(?<![א-ת])י' + NIKUD + r'*ה' + NIKUD + r'*ו' + NIKUD + r'*ה' + NIKUD + r'*(?![א-ת])')
 
 def fix_shem(s):
@@ -97,6 +98,8 @@ def main():
         end = bounds[si + 1]
         sec = {'id': si, 'slug': slug, 'title': title, 'desc': desc, 'paragraphs': []}
         for pi in range(start, end):
+            if pi in SKIP_PARAGRAPHS:
+                continue
             text = paras[pi]
             direction = ''
             m = re.match(r'^\((.*?)\)\s*', text)
@@ -112,7 +115,8 @@ def main():
                 tokens.append({'t': tok, 'n': n, 'i': widx, 'skip': (not n) or inline_note})
                 widx += 1
             sec['paragraphs'].append({'p': pi, 'dir': direction, 'w': tokens})
-        sections.append(sec)
+        if sec['paragraphs']:
+            sections.append(sec)
 
     flat = [t for s in sections for p in s['paragraphs'] for t in p['w']]
     doc = {

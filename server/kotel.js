@@ -7,6 +7,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { Aligner, tokenize } from './matcher.js';
 
+// ffmpeg: מעדיפים את הבינארי של המערכת (כך זה בייצור, בתוך ה-Docker);
+// בפיתוח מקומי נופלים ל-ffmpeg-static אם הותקן.
+export async function resolveFfmpeg() {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+  try {
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+    return 'ffmpeg';
+  } catch {}
+  try { return (await import('ffmpeg-static')).default; } catch {}
+  return 'ffmpeg';
+}
+
 const CFG = {
   streamUrl: process.env.KOTEL_STREAM_URL || 'https://www.youtube.com/watch?v=LMHUcDktP-w',
   // 91 = 144p עם אודיו (~290kbps) — הזול ביותר לקליטה; נופל חזרה לאודיו בלבד אם קיים
@@ -32,6 +45,8 @@ export class KotelEngine {
     this.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kotel-'));
     this.lastClientAt = 0;
     this.sectionOf = this._buildSectionMap();
+    this.ffmpegPath = 'ffmpeg';
+    resolveFfmpeg().then(p => { this.ffmpegPath = p; });
     setInterval(() => this._tick(), 1000).unref?.();
   }
 
@@ -142,7 +157,7 @@ export class KotelEngine {
 
     const ytdlp = spawn('yt-dlp', ['-q', '--no-warnings', '--no-part', '-f', CFG.ytFormat, '-o', '-', CFG.streamUrl],
       { stdio: ['ignore', 'pipe', 'pipe'] });
-    const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
+    const ffmpeg = spawn(this.ffmpegPath || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
       '-segment_time', String(CFG.segSec), '-reset_timestamps', '1',
       path.join(dir, 'seg%05d.wav')], { stdio: ['pipe', 'ignore', 'pipe'] });
@@ -277,3 +292,4 @@ async function transcribeElevenLabs(wavBuffer) {
 }
 
 export const kotelConfig = CFG;
+export { transcribe };

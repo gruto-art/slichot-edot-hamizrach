@@ -4,13 +4,19 @@
   "description": "סליחות נוסח עדות המזרח - טקסט מנוקד מלא עם מעקב חי אחר הסליחות בכותל המערבי",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "node scripts/build_site.mjs",
     "start": "npm run build && node server/index.js",
-    "dev": "npm run build && node --watch server/index.js"
+    "dev": "npm run build && node --watch server/index.js",
+    "test:kotel": "node scripts/test_kotel.mjs"
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "^5.2.0"
   }
 }

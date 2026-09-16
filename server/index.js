@@ -2,7 +2,8 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { KotelEngine, kotelConfig } from './kotel.js';
+import { KotelEngine, kotelConfig, resolveFfmpeg } from './kotel.js';
+import { execFileSync } from 'node:child_process';
 import { recordHit, recordPulse, recordEvent, stats, liveFeed } from './analytics.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -89,7 +90,21 @@ app.post('/api/leave', (req, res) => { try { recordPulse(req.body || {}); } catc
 app.post('/api/event', (req, res) => { try { recordEvent(req.body || {}); } catch {} res.status(204).end(); });
 
 app.get('/api/stats', requireAdmin, (_req, res) => res.json({ ...stats(), liveListeners: kotel.listeners, feed: liveFeed() }));
-app.get('/api/health', (_req, res) => res.json({ ok: true, uptime: Math.round(process.uptime()), listeners: kotel.listeners, mode: kotel.state.mode }));
+const has = (bin, args) => { try { execFileSync(bin, args, { stdio: 'ignore' }); return true; } catch { return false; } };
+app.get('/api/health', async (_req, res) => res.json({
+  ok: true,
+  uptime: Math.round(process.uptime()),
+  listeners: kotel.listeners,
+  mode: kotel.state.mode,
+  live: {
+    stream: !!kotelConfig.streamUrl,
+    transcriber: kotelConfig.provider,
+    keyConfigured: kotelConfig.provider === 'elevenlabs' ? !!kotelConfig.elevenKey : !!kotelConfig.openaiKey,
+    ffmpeg: has(await resolveFfmpeg(), ['-version']),
+    ytdlp: has('yt-dlp', ['--version'])
+  },
+  words: doc.wordCount, sections: doc.sections.length
+}));
 
 /* ---------- לוח בקרה ---------- */
 app.get('/admin', (_req, res) => res.sendFile(path.join(root, 'public/admin.html')));
