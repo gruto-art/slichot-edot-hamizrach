@@ -90,8 +90,12 @@ app.post('/api/leave', (req, res) => { try { recordPulse(req.body || {}); } catc
 app.post('/api/event', (req, res) => { try { recordEvent(req.body || {}); } catch {} res.status(204).end(); });
 
 app.get('/api/stats', requireAdmin, (_req, res) => res.json({ ...stats(), liveListeners: kotel.listeners, feed: liveFeed() }));
-const has = (bin, args) => { try { execFileSync(bin, args, { stdio: 'ignore' }); return true; } catch { return false; } };
-app.get('/api/health', async (_req, res) => res.json({
+// אבחון תלויות נבדק פעם אחת בעלייה — בדיקת הבריאות נקראת תדיר ואסור שתחסום
+const has = (bin, args) => { try { execFileSync(bin, args, { stdio: 'ignore', timeout: 5000 }); return true; } catch { return false; } };
+const deps = { ffmpeg: false, ytdlp: false };
+resolveFfmpeg().then(p => { deps.ffmpeg = has(p, ['-version']); deps.ytdlp = has('yt-dlp', ['--version']); });
+
+app.get('/api/health', (_req, res) => res.json({
   ok: true,
   uptime: Math.round(process.uptime()),
   listeners: kotel.listeners,
@@ -100,8 +104,9 @@ app.get('/api/health', async (_req, res) => res.json({
     stream: !!kotelConfig.streamUrl,
     transcriber: kotelConfig.provider,
     keyConfigured: kotelConfig.provider === 'elevenlabs' ? !!kotelConfig.elevenKey : !!kotelConfig.openaiKey,
-    ffmpeg: has(await resolveFfmpeg(), ['-version']),
-    ytdlp: has('yt-dlp', ['--version'])
+    ffmpeg: deps.ffmpeg,
+    ytdlp: deps.ytdlp,
+    lastError: kotel.lastError || null
   },
   words: doc.wordCount, sections: doc.sections.length
 }));

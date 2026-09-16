@@ -131,6 +131,10 @@ export class KotelEngine {
       return;
     }
     if (this.proc.ffmpeg || this.pendingStart) return;
+    if (this.retryAfter && Date.now() < this.retryAfter) {
+      this.broadcast('status', { state: 'idle', message: 'המעקב החי אינו זמין כרגע. אפשר לקרוא בקצב שלך.' });
+      return;
+    }
     this.pendingStart = true;
     this.state.mode = 'starting';
     this.broadcast('status', { state: 'starting' });
@@ -183,10 +187,12 @@ export class KotelEngine {
       this.proc.ffmpeg = null;
       console.warn('[kotel] ffmpeg exited', code);
       // כתובות HLS פגות תוקף — מרעננים ומתחברים מחדש כל עוד יש מאזינים
-      if (this.clients.size) setTimeout(() => { this.state.mode = 'off'; this.start('reconnect'); }, 4000);
+      if (this.clients.size) setTimeout(() => { this.state.mode = 'off'; this.start('reconnect'); }, 5000);
     });
 
     this.proc.ffmpeg = ffmpeg;
+    this.failures = 0;
+    this.retryAfter = 0;
     this.state.mode = 'listening';
     this.broadcast('status', { state: 'listening' });
     this._watchSegments();
@@ -202,8 +208,9 @@ export class KotelEngine {
       p.on('error', reject);
       p.on('exit', code => {
         const url = out.trim().split('\n').filter(Boolean).pop();
-        if (code === 0 && url && /^https?:/.test(url)) resolve(url);
-        else reject(new Error(err.trim().slice(0, 200) || 'exit ' + code));
+        if (code === 0 && url && /^https?:/.test(url)) return resolve(url);
+        const detail = [err.trim(), out.trim()].filter(Boolean).join(' | ').slice(0, 400);
+        reject(new Error(`exit ${code}${detail ? ' — ' + detail : ' (ללא פלט שגיאה)'}`));
       });
       this.proc.ytdlp = p;
       setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 40000);
@@ -212,6 +219,10 @@ export class KotelEngine {
 
   _fail(msg) {
     console.error('[kotel] ' + msg);
+    this.lastError = { at: new Date().toISOString(), message: String(msg).slice(0, 400) };
+    this.failures = (this.failures || 0) + 1;
+    // השהיה מצטברת: 30 שניות, דקה, שתיים… עד 10 דקות, כדי לא להציף את השירות
+    this.retryAfter = Date.now() + Math.min(600000, 30000 * 2 ** (this.failures - 1));
     this.stopIngest();
     this.state.mode = 'off';
     this.broadcast('status', { state: 'idle', message: 'המעקב החי אינו זמין כרגע. אפשר לקרוא בקצב שלך.' });
