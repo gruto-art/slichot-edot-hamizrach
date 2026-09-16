@@ -93,6 +93,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, uptime: Math.round(pr
 
 /* ---------- לוח בקרה ---------- */
 app.get('/admin', (_req, res) => res.sendFile(path.join(root, 'public/admin.html')));
+app.get('/sync', (_req, res) => res.sendFile(path.join(root, 'public/sync.html')));
 
 /* ---------- סטטי ---------- */
 app.use(express.static(path.join(root, 'public'), {

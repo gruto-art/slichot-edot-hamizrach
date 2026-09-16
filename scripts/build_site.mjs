@@ -196,7 +196,7 @@ fs.writeFileSync(path.join(root, 'public/index.html'), html);
 fs.writeFileSync(path.join(root, 'public/robots.txt'),
 `User-agent: *
 Allow: /
-Disallow: /admin
+Disallow: /admin\nDisallow: /sync
 Disallow: /api/
 Sitemap: ${SITE}/sitemap.xml
 `);

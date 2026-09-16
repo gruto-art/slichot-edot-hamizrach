@@ -8,7 +8,9 @@ import path from 'node:path';
 import { Aligner, tokenize } from './matcher.js';
 
 const CFG = {
-  streamUrl: process.env.KOTEL_STREAM_URL || '',
+  streamUrl: process.env.KOTEL_STREAM_URL || 'https://www.youtube.com/watch?v=LMHUcDktP-w',
+  // 91 = 144p עם אודיו (~290kbps) — הזול ביותר לקליטה; נופל חזרה לאודיו בלבד אם קיים
+  ytFormat: process.env.KOTEL_YTDLP_FORMAT || '91/bestaudio*/worst',
   provider: (process.env.STT_PROVIDER || 'openai').toLowerCase(),
   openaiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe',
@@ -138,7 +140,7 @@ export class KotelEngine {
     const dir = this.tmpDir;
     for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
 
-    const ytdlp = spawn('yt-dlp', ['-q', '--no-warnings', '-f', 'bestaudio/best', '-o', '-', CFG.streamUrl],
+    const ytdlp = spawn('yt-dlp', ['-q', '--no-warnings', '--no-part', '-f', CFG.ytFormat, '-o', '-', CFG.streamUrl],
       { stdio: ['ignore', 'pipe', 'pipe'] });
     const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',

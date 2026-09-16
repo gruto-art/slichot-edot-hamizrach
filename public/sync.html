@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>סנכרון ידני · סליחות עדות המזרח</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Noto+Serif+Hebrew:wght@400;600&display=swap">
+<style>
+:root{--bg:#100e0b;--card:#181410;--fg:#ece2cf;--soft:#a2947c;--gold:#d0aa62;--rule:#2c2620}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Noto Serif Hebrew",serif;direction:rtl}
+header{position:sticky;top:0;z-index:10;background:var(--card);border-bottom:1px solid var(--rule);padding:.8rem 1rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+h1{font-family:"Frank Ruhl Libre",serif;font-size:1.15rem;margin:0}
+input,button,select{font-family:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--rule);border-radius:7px;padding:.45rem .8rem;font-size:.88rem}
+button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
+.now{background:var(--gold);color:#14110c;border-color:var(--gold)}
+main{max-width:800px;margin:0 auto;padding:1rem 1rem 6rem}
+.muted{color:var(--soft);font-size:.82rem;line-height:1.8}
+.words{font-size:1.25rem;line-height:2.4}
+.words l{display:block;margin-bottom:.3em}
+.words w{cursor:pointer;padding:.05em .1em;border-radius:.2em}
+.words w:hover{background:#3a2f13}
+.words w.cur{background:var(--gold);color:#14110c}
+.words w.done{opacity:.45}
+h2{font-family:"Frank Ruhl Libre",serif;color:var(--gold);font-size:1.05rem;margin:1.6rem 0 .3rem}
+.bar{position:fixed;inset-inline:0;bottom:0;background:var(--card);border-top:1px solid var(--rule);padding:.6rem 1rem;display:flex;gap:.5rem;align-items:center;justify-content:center;flex-wrap:wrap}
+.status{color:var(--soft);font-size:.8rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>סנכרון ידני — לגבאי</h1>
+  <select id="secSel"></select>
+  <input id="token" type="password" placeholder="ADMIN_TOKEN" style="width:160px">
+  <button id="save">שמירה</button>
+  <span class="status" id="st">לחצו על מילה כדי לסמן היכן אוחזים</span>
+</header>
+<main>
+  <p class="muted">כל לחיצה על מילה משדרת מיד לכל מי שהפעיל "מעקב אחרי הכותל" באתר.
+  מקשי קיצור: <b>רווח</b> או <b>←</b> — שורה הבאה, <b>→</b> — שורה קודמת.</p>
+  <div id="body" class="words"></div>
+</main>
+<div class="bar">
+  <button id="prev">◂ שורה קודמת</button>
+  <button id="next">שורה הבאה ▸</button>
+  <button id="stop">עצירת סנכרון</button>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let doc=null, token=localStorage.getItem('admin_token')||'', cur=-1, lines=[];
+$('#token').value=token;
+$('#save').onclick=()=>{token=$('#token').value.trim();localStorage.setItem('admin_token',token);$('#st').textContent='הטוקן נשמר';};
+
+async function boot(){
+  doc = await fetch('/data/slichot.json').then(r=>r.json());
+  $('#secSel').innerHTML = doc.sections.map(s=>`<option value="${s.id}">${s.title}</option>`).join('');
+  $('#secSel').onchange = () => renderSection(+$('#secSel').value);
+  renderSection(0);
+  const st = await fetch('/api/live/state').then(r=>r.json());
+  if(st.word>=0) mark(st.word,false);
+}
+
+function renderSection(id){
+  const sec = doc.sections[id];
+  $('#body').innerHTML = `<h2>${sec.title}</h2>` + sec.paragraphs.map(p=>{
+    let out='', line=[];
+    const flush=()=>{ if(line.length){ out+='<l>'+line.join(' ')+'</l>'; line=[]; } };
+    for(const w of p.w){
+      line.push(`<w data-i="${w.i}">${w.t}</w>`);
+      if(/[:.׃]$/.test(w.t) && line.length>1) flush();
+    }
+    flush();
+    return (p.dir?`<div class="muted">(${p.dir})</div>`:'')+out;
+  }).join('');
+  lines = [...document.querySelectorAll('#body l')];
+  document.querySelectorAll('#body w').forEach(w=>w.onclick=()=>send(+w.dataset.i));
+}
+
+function mark(i,scroll=true){
+  cur=i;
+  document.querySelectorAll('#body w').forEach(w=>{
+    const n=+w.dataset.i;
+    w.classList.toggle('cur', n===i);
+    w.classList.toggle('done', n<i);
+  });
+  const el=document.querySelector(`#body w[data-i="${i}"]`);
+  if(el&&scroll) el.scrollIntoView({block:'center',behavior:'smooth'});
+}
+
+async function send(i){
+  if(!token){ $('#st').textContent='חסר טוקן ניהול'; return; }
+  const r = await fetch('/api/live/manual',{method:'POST',headers:{'content-type':'application/json','x-admin-token':token},body:JSON.stringify({word:i})});
+  if(!r.ok){ $('#st').textContent = r.status===401?'טוקן שגוי':'שגיאה '+r.status; return; }
+  const d = await r.json();
+  mark(i,false);
+  $('#st').textContent = 'שודר: '+d.section;
+}
+
+function step(dir){
+  const idx = lines.findIndex(l=>l.querySelector('w.cur'));
+  const t = lines[Math.max(0,Math.min(lines.length-1,(idx<0?0:idx)+dir))];
+  const w = t?.querySelector('w');
+  if(w) send(+w.dataset.i);
+}
+$('#next').onclick=()=>step(1);
+$('#prev').onclick=()=>step(-1);
+$('#stop').onclick=async()=>{
+  await fetch('/api/live/control',{method:'POST',headers:{'content-type':'application/json','x-admin-token':token},body:JSON.stringify({action:'stop'})});
+  $('#st').textContent='הסנכרון הופסק';
+};
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.key===' '||e.key==='ArrowLeft'){e.preventDefault();step(1);}
+  if(e.key==='ArrowRight'){e.preventDefault();step(-1);}
+});
+boot();
+</script>
+</body>
+</html>

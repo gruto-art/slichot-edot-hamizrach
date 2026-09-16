@@ -18,7 +18,7 @@ services:
         value: /var/data
       # מעקב חי מהכותל — למלא כדי להפעיל
       - key: KOTEL_STREAM_URL
-        sync: false
+        value: https://www.youtube.com/watch?v=LMHUcDktP-w
       - key: STT_PROVIDER
         value: openai
       - key: OPENAI_API_KEY
