@@ -19,6 +19,10 @@ services:
       # מעקב חי מהכותל — למלא כדי להפעיל
       - key: KOTEL_STREAM_URL
         value: https://www.youtube.com/watch?v=LMHUcDktP-w
+      # יוטיוב חוסמת כתובות IP של מרכזי נתונים. קובץ העוגיות מועלה כ-Secret File
+      # בשם cookies.txt דרך הדשבורד, ומוגש תחת /etc/secrets/.
+      - key: YTDLP_COOKIES
+        value: /etc/secrets/cookies.txt
       - key: STT_PROVIDER
         value: openai
       - key: OPENAI_API_KEY
