@@ -106,6 +106,8 @@ app.get('/api/health', (_req, res) => res.json({
     keyConfigured: kotelConfig.provider === 'elevenlabs' ? !!kotelConfig.elevenKey : !!kotelConfig.openaiKey,
     ffmpeg: deps.ffmpeg,
     ytdlp: deps.ytdlp,
+    cookies: !!kotel.cookiesPath,
+    ytStrategy: kotel.ytStrategy || null,
     lastError: kotel.lastError || null
   },
   words: doc.wordCount, sections: doc.sections.length

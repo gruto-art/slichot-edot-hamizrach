@@ -49,6 +49,26 @@ const YT_STRATEGIES = [
 
 const isDirectStream = url => /\.m3u8(\?|$)|\.mpd(\?|$)|^rtmps?:/i.test(url);
 
+// yt-dlp כותב חזרה לקובץ העוגיות אחרי כל ריצה, וקבצי סוד ב-Render הם לקריאה בלבד.
+// לכן מעתיקים לעותק זמני בר-כתיבה, ומרעננים אותו בכל עלייה של השירות.
+function prepareCookies(src) {
+  if (!src) return '';
+  try {
+    if (!fs.existsSync(src)) {
+      console.warn('[kotel] קובץ העוגיות לא נמצא:', src);
+      return '';
+    }
+    const dest = path.join(os.tmpdir(), 'yt-cookies.txt');
+    fs.copyFileSync(src, dest);
+    fs.chmodSync(dest, 0o600);
+    console.log('[kotel] קובץ עוגיות נטען');
+    return dest;
+  } catch (e) {
+    console.warn('[kotel] טעינת קובץ העוגיות נכשלה:', e.message);
+    return '';
+  }
+}
+
 export class KotelEngine {
   constructor(doc, words) {
     this.doc = doc;
@@ -61,6 +81,7 @@ export class KotelEngine {
     this.lastClientAt = 0;
     this.sectionOf = this._buildSectionMap();
     this.ffmpegPath = 'ffmpeg';
+    this.cookiesPath = prepareCookies(CFG.ytCookies);
     resolveFfmpeg().then(p => { this.ffmpegPath = p; });
     setInterval(() => this._tick(), 1000).unref?.();
   }
@@ -240,7 +261,7 @@ export class KotelEngine {
   _tryYtDlp(strat) {
     return new Promise((resolve, reject) => {
       const args = ['--no-warnings', '--socket-timeout', '20', ...strat.args];
-      if (CFG.ytCookies) args.push('--cookies', CFG.ytCookies);
+      if (this.cookiesPath) args.push('--cookies', this.cookiesPath);
       args.push('-f', CFG.ytFormat, '-g', CFG.streamUrl);
       const p = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '', err = '';
