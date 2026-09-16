@@ -219,12 +219,13 @@ Disallow: /api/
 Sitemap: ${SITE}/sitemap.xml
 `);
 
-const urls = [`<url><loc>${SITE}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`]
-  .concat(doc.sections.map(s => `<url><loc>${SITE}/#${s.slug}</loc><priority>0.6</priority></url>`));
+// מפת האתר מכילה רק כתובות אמיתיות. עוגנים (#) אינם דפים נפרדים וגוגל
+// מתעלמת מהם — הוספתם רק מייצרת אזהרות. לאתר יש דף אחד.
+const today = new Date().toISOString().slice(0, 10);
 fs.writeFileSync(path.join(root, 'public/sitemap.xml'),
 `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.join('\n')}
+<url><loc>${SITE}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
 </urlset>`);
 
 console.log('built public/index.html (%d KB), robots.txt, sitemap.xml', Math.round(html.length / 1024));
