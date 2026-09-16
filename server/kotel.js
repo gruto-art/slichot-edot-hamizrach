@@ -24,6 +24,9 @@ const CFG = {
   streamUrl: process.env.KOTEL_STREAM_URL || 'https://www.youtube.com/watch?v=LMHUcDktP-w',
   // 91 = 144p עם אודיו (~290kbps) — הזול ביותר לקליטה; נופל חזרה לאודיו בלבד אם קיים
   ytFormat: process.env.KOTEL_YTDLP_FORMAT || '91/bestaudio*/worst',
+  // כתובת HLS ישירה נקלטת בלי yt-dlp כלל (חוסך את בדיקת הבוטים של יוטיוב)
+  streamReferer: process.env.KOTEL_STREAM_REFERER || '',
+  ytCookies: process.env.YTDLP_COOKIES || '',
   provider: (process.env.STT_PROVIDER || 'openai').toLowerCase(),
   openaiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe',
@@ -33,6 +36,18 @@ const CFG = {
   minConfidence: Number(process.env.KOTEL_MIN_CONFIDENCE || 0.18),
   wpm: Number(process.env.KOTEL_WPM || 95)
 };
+
+// יוטיוב חוסמת כתובות IP של מרכזי נתונים ("Sign in to confirm you're not a bot").
+// לקוחות נגן שונים נחסמים אחרת, ולכן מנסים כמה בזה אחר זה עד שאחד מצליח.
+const YT_STRATEGIES = [
+  { name: 'ברירת מחדל', args: [] },
+  { name: 'android_vr', args: ['--extractor-args', 'youtube:player_client=android_vr'] },
+  { name: 'tv_embedded', args: ['--extractor-args', 'youtube:player_client=tv_embedded'] },
+  { name: 'ios', args: ['--extractor-args', 'youtube:player_client=ios'] },
+  { name: 'web_safari', args: ['--extractor-args', 'youtube:player_client=web_safari'] }
+];
+
+const isDirectStream = url => /\.m3u8(\?|$)|\.mpd(\?|$)|^rtmps?:/i.test(url);
 
 export class KotelEngine {
   constructor(doc, words) {
@@ -161,19 +176,25 @@ export class KotelEngine {
     const dir = this.tmpDir;
     for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
 
-    // שלב א: yt-dlp מחלץ את כתובת ה-HLS הישירה (יציב הרבה יותר מהזרמה דרך צינור)
+    // שלב א: מקור ישיר (m3u8/mpd) נקלט כמו שהוא; אחרת yt-dlp מחלץ את הכתובת
     let mediaUrl;
-    try {
-      mediaUrl = await this._resolveMediaUrl();
-    } catch (e) {
-      return this._fail('yt-dlp: ' + e.message);
+    if (isDirectStream(CFG.streamUrl)) {
+      mediaUrl = CFG.streamUrl;
+    } else {
+      try {
+        mediaUrl = await this._resolveMediaUrl();
+      } catch (e) {
+        return this._fail('yt-dlp: ' + e.message);
+      }
     }
     if (!this.pendingStart) return;   // בוטל בינתיים
 
     // שלב ב: ffmpeg קולט את ה-HLS ישירות וחותך לקטעי WAV
+    const headers = CFG.streamReferer ? ['-headers', `Referer: ${CFG.streamReferer}\r\n`] : [];
     const ffmpeg = spawn(this.ffmpegPath || 'ffmpeg', [
       '-hide_banner', '-loglevel', 'error',
       '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
+      ...headers,
       '-i', mediaUrl,
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
       '-segment_time', String(CFG.segSec), '-reset_timestamps', '1',
@@ -198,22 +219,44 @@ export class KotelEngine {
     this._watchSegments();
   }
 
-  _resolveMediaUrl() {
+  async _resolveMediaUrl() {
+    const errors = [];
+    for (const strat of YT_STRATEGIES) {
+      try {
+        const url = await this._tryYtDlp(strat);
+        if (this.ytStrategy !== strat.name) {
+          console.log(`[kotel] yt-dlp הצליח עם ${strat.name}`);
+          this.ytStrategy = strat.name;
+        }
+        return url;
+      } catch (e) {
+        errors.push(`${strat.name}: ${e.message}`);
+        if (!this.pendingStart) break;
+      }
+    }
+    throw new Error(errors.join(' ;; ').slice(0, 600));
+  }
+
+  _tryYtDlp(strat) {
     return new Promise((resolve, reject) => {
-      const p = spawn('yt-dlp', ['--no-warnings', '--socket-timeout', '25',
-        '-f', CFG.ytFormat, '-g', CFG.streamUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const args = ['--no-warnings', '--socket-timeout', '20', ...strat.args];
+      if (CFG.ytCookies) args.push('--cookies', CFG.ytCookies);
+      args.push('-f', CFG.ytFormat, '-g', CFG.streamUrl);
+      const p = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '', err = '';
       p.stdout.on('data', d => { out += d; });
       p.stderr.on('data', d => { err += d; });
       p.on('error', reject);
+      const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 35000);
       p.on('exit', code => {
+        clearTimeout(timer);
         const url = out.trim().split('\n').filter(Boolean).pop();
         if (code === 0 && url && /^https?:/.test(url)) return resolve(url);
-        const detail = [err.trim(), out.trim()].filter(Boolean).join(' | ').slice(0, 400);
-        reject(new Error(`exit ${code}${detail ? ' — ' + detail : ' (ללא פלט שגיאה)'}`));
+        const detail = [err.trim(), out.trim()].filter(Boolean).join(' | ')
+          .replace(/\s+/g, ' ').slice(0, 160);
+        reject(new Error(detail || 'exit ' + code));
       });
       this.proc.ytdlp = p;
-      setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 40000);
     });
   }
 
