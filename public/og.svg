@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="24%" r="70%">
+      <stop offset="0%" stop-color="#2a2114"/>
+      <stop offset="70%" stop-color="#100e0b"/>
+    </radialGradient>
+    <linearGradient id="rule" x1="0" x2="1">
+      <stop offset="0%" stop-color="#8e7538" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#d0aa62"/>
+      <stop offset="100%" stop-color="#8e7538" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="1200" fill="#100e0b"/>
+  <rect y="285" width="1200" height="630" fill="url(#g)"/>
+  <text x="600" y="400" text-anchor="middle" font-family="Times New Roman, serif" font-size="34" fill="#d0aa62">אשמורת הבוקר</text>
+  <text x="600" y="545" text-anchor="middle" font-family="Times New Roman, serif" font-weight="bold" font-size="104" fill="#ece2cf">סליחות עדות המזרח</text>
+  <rect x="390" y="600" width="420" height="2" fill="url(#rule)"/>
+  <text x="600" y="683" text-anchor="middle" font-family="Times New Roman, serif" font-size="42" fill="#d0aa62">נוסח ספרדי — סדר מלא ומנוקד</text>
+  <text x="600" y="790" text-anchor="middle" font-family="Times New Roman, serif" font-size="31" fill="#a2947c">ובנוסף: מעקב חי אחרי הסליחות בכותל המערבי</text>
+</svg>
