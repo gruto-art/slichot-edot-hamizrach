@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>לוח בקרה · סליחות עדות המזרח</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Noto+Serif+Hebrew:wght@400;600&display=swap">
+<style>
+:root{--bg:#0f0d0a;--card:#191510;--fg:#ece2cf;--soft:#9d8f78;--gold:#d0aa62;--rule:#2b2520;--ok:#4ec77d;}
+@media(prefers-color-scheme:light){:root{--bg:#f7f2e7;--card:#fffdf8;--fg:#241d14;--soft:#6b5f4f;--gold:#96712c;--rule:#e0d5be;--ok:#1f8a4c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Noto Serif Hebrew",serif;direction:rtl}
+header{padding:1.6rem 1.2rem 1rem;border-bottom:1px solid var(--rule);display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+h1{font-family:"Frank Ruhl Libre",serif;font-size:1.5rem;margin:0}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);display:inline-block;margin-inline-start:.4rem}
+main{max-width:1100px;margin:0 auto;padding:1.4rem 1.2rem 4rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.8rem;margin-bottom:1.6rem}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:1rem}
+.card .k{font-size:.76rem;color:var(--soft);letter-spacing:.03em}
+.card .v{font-family:"Frank Ruhl Libre",serif;font-size:1.9rem;font-weight:700;line-height:1.2;margin-top:.25rem}
+.card .s{font-size:.74rem;color:var(--soft);margin-top:.2rem}
+h2{font-family:"Frank Ruhl Libre",serif;font-size:1.1rem;margin:1.8rem 0 .7rem;color:var(--gold)}
+table{width:100%;border-collapse:collapse;font-size:.85rem;background:var(--card);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+th,td{text-align:right;padding:.5rem .8rem;border-bottom:1px solid var(--rule)}
+th{color:var(--soft);font-weight:600;font-size:.76rem}
+tr:last-child td{border-bottom:0}
+.bars{display:flex;align-items:flex-end;gap:3px;height:110px;background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:.8rem}
+.bar{flex:1;background:linear-gradient(180deg,var(--gold),transparent);border-radius:3px 3px 0 0;min-height:2px;position:relative}
+.bar span{position:absolute;bottom:-1.15rem;inset-inline:0;text-align:center;font-size:.6rem;color:var(--soft)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+input,button{font-family:inherit;background:var(--card);color:var(--fg);border:1px solid var(--rule);border-radius:7px;padding:.45rem .8rem;font-size:.85rem}
+button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
+.muted{color:var(--soft);font-size:.8rem}
+.tag{font-size:.7rem;border:1px solid var(--rule);border-radius:999px;padding:.1rem .5rem;color:var(--soft)}
+</style>
+</head>
+<body>
+<header>
+  <h1>לוח בקרה — סליחות עדות המזרח</h1>
+  <span class="tag" id="storeTag">—</span>
+  <span style="flex:1"></span>
+  <input id="token" type="password" placeholder="ADMIN_TOKEN" style="width:190px">
+  <button id="go">כניסה</button>
+  <span class="muted" id="upd"></span>
+</header>
+<main>
+  <div id="content" style="display:none">
+    <div class="grid" id="kpis"></div>
+
+    <h2>כניסות ב־24 השעות האחרונות</h2>
+    <div class="bars" id="hourly"></div>
+    <div style="height:1.3rem"></div>
+
+    <h2>30 ימים אחרונים</h2>
+    <div class="bars" id="daily"></div>
+    <div style="height:1.3rem"></div>
+
+    <div class="cols">
+      <div><h2>מקורות תנועה</h2><table id="refs"></table></div>
+      <div><h2>מכשירים</h2><table id="devices"></table></div>
+      <div><h2>דפדפנים</h2><table id="browsers"></table></div>
+      <div><h2>קמפיינים (UTM)</h2><table id="camps"></table></div>
+    </div>
+
+    <h2>מבקרים אחרונים (חי)</h2>
+    <table id="feed"></table>
+  </div>
+  <p class="muted" id="msg">הכניסו טוקן ניהול כדי לצפות בנתונים.</p>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let token = localStorage.getItem('admin_token') || '';
+$('#token').value = token;
+
+async function load(){
+  if(!token) return;
+  try{
+    const r = await fetch('/api/stats',{headers:{'x-admin-token':token}});
+    if(!r.ok){ $('#msg').textContent = r.status===401?'טוקן שגוי או ש-ADMIN_TOKEN לא הוגדר בשרת.':'שגיאה '+r.status; return; }
+    const d = await r.json();
+    localStorage.setItem('admin_token',token);
+    $('#content').style.display='block'; $('#msg').style.display='none';
+    $('#storeTag').textContent = 'אחסון: '+d.storage;
+    $('#upd').textContent = 'עודכן '+new Date(d.now).toLocaleTimeString('he-IL');
+    render(d);
+  }catch(e){ $('#msg').textContent='שגיאת רשת: '+e.message; }
+}
+
+const kpi=(k,v,s)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s||''}</div></div>`;
+
+function render(d){
+  $('#kpis').innerHTML =
+    kpi('כרגע באתר', d.online.visitors, `${d.online.sessions} טאבים · ${d.liveListeners} במעקב הכותל`)+
+    kpi('מבקרים היום', d.totals.todayVisitors, `${d.totals.today} כניסות`)+
+    kpi('7 ימים', d.totals.last7d, `30 יום: ${d.totals.last30d}`)+
+    kpi('סה״כ מבקרים', d.totals.allTimeVisitors, `${d.totals.allTimeSessions} כניסות מאז ההשקה`)+
+    kpi('זמן קריאה ממוצע', fmt(d.engagement.avgActiveSec), 'היום, זמן פעיל בלבד')+
+    kpi('עומק גלילה', d.engagement.avgScroll+'%', 'ממוצע היום')+
+    kpi('חוזרים', d.engagement.returningPct+'%', `נטישה מהירה: ${d.engagement.bounce}%`)+
+    kpi('השתמשו במעקב הכותל', d.engagement.liveUsersToday, 'היום')+
+    kpi('בוטים/סורקים', d.bots, 'מסוננים מהנתונים');
+
+  bars('#hourly', d.hourly.map(h=>({v:h.visitors,l:h.hour})));
+  bars('#daily', d.daily.map(x=>({v:x.visitors,l:x.date.slice(8)})));
+  table('#refs',['מקור','כניסות'],d.breakdown.referrers);
+  table('#devices',['מכשיר','כניסות'],d.breakdown.devices);
+  table('#browsers',['דפדפן','כניסות'],d.breakdown.browsers);
+  table('#camps',['קמפיין','כניסות'],d.breakdown.campaigns.length?d.breakdown.campaigns:[{k:'אין',v:0}]);
+
+  $('#feed').innerHTML='<tr><th>נכנס</th><th>מכשיר</th><th>מקור</th><th>זמן פעיל</th><th>גלילה</th><th>מעקב כותל</th></tr>'+
+    d.feed.map(f=>`<tr><td>${new Date(f.at).toLocaleTimeString('he-IL')}</td><td>${f.device} · ${f.os}</td><td>${f.ref}</td><td>${fmt(f.activeSec)}</td><td>${f.scroll}%</td><td>${f.live?'✔':'—'}</td></tr>`).join('');
+}
+function fmt(s){ return s>=60? Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+' דק׳' : s+' שנ׳'; }
+function bars(sel,arr){
+  const max=Math.max(1,...arr.map(a=>a.v));
+  $(sel).innerHTML=arr.map(a=>`<div class="bar" style="height:${Math.max(2,a.v/max*100)}%" title="${a.v}"><span>${a.l}</span></div>`).join('');
+}
+function table(sel,head,rows){
+  $(sel).innerHTML='<tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr>'+
+    rows.map(r=>`<tr><td>${r.k}</td><td>${r.v}</td></tr>`).join('');
+}
+$('#go').onclick=()=>{token=$('#token').value.trim();load();};
+$('#token').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
+load(); setInterval(load,10000);
+</script>
+</body>
+</html>

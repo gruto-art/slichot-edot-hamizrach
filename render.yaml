@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: slichot
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: SITE_URL
+        value: https://slichot.onrender.com
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: ANALYTICS_SALT
+        generateValue: true
+      - key: DATA_DIR
+        value: /var/data
+      # מעקב חי מהכותל — למלא כדי להפעיל
+      - key: KOTEL_STREAM_URL
+        sync: false
+      - key: STT_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      # פרסומות (AdSense) — למלא לאחר אישור החשבון
+      - key: ADSENSE_CLIENT
+        sync: false
+      - key: ADSENSE_SLOT_TOP
+        sync: false
+      - key: ADSENSE_SLOT_BOTTOM
+        sync: false
+      - key: GA_MEASUREMENT_ID
+        sync: false
