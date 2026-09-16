@@ -11,8 +11,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev || npm install --omit=dev
 COPY . .
-RUN npm run build
 
 ENV NODE_ENV=production PORT=10000 DATA_DIR=/var/data
 EXPOSE 10000
-CMD ["node", "server/index.js"]
+
+# הדף נבנה בעלייה ולא בבניית התמונה: GA_MEASUREMENT_ID ו-GOOGLE_SITE_VERIFICATION
+# הם משתני סביבה של השירות, ואינם קיימים בזמן docker build. הבנייה אורכת פחות משנייה.
+CMD ["sh", "-c", "npm run build && node server/index.js"]

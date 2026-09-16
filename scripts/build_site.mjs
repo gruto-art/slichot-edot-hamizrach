@@ -10,6 +10,7 @@ const ADSENSE_CLIENT = process.env.ADSENSE_CLIENT || '';
 const ADSENSE_SLOT_TOP = process.env.ADSENSE_SLOT_TOP || '';
 const ADSENSE_SLOT_BOTTOM = process.env.ADSENSE_SLOT_BOTTOM || '';
 const GA_ID = process.env.GA_MEASUREMENT_ID || '';
+const GSC_TOKEN = process.env.GOOGLE_SITE_VERIFICATION || '';
 
 const ver = f => {
   try { return String(fs.statSync(path.join(root, 'public', f)).mtimeMs & 0x7fffffff); } catch { return '1'; }
@@ -105,6 +106,7 @@ const html = `<!DOCTYPE html>
 <meta name="keywords" content="${esc(KEYWORDS)}">
 <meta name="author" content="סליחות עדות המזרח">
 <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large">
+${GSC_TOKEN ? `<meta name="google-site-verification" content="${esc(GSC_TOKEN)}">` : ''}
 <link rel="canonical" href="${SITE}/">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="he_IL">
