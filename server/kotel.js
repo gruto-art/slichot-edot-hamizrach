@@ -31,7 +31,8 @@ const CFG = {
   openaiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe',
   elevenKey: process.env.ELEVENLABS_API_KEY || '',
-  segSec: Number(process.env.KOTEL_SEGMENT_SEC || 8),
+  elevenModel: process.env.ELEVENLABS_STT_MODEL || 'scribe_v1',
+  segSec: Number(process.env.KOTEL_SEGMENT_SEC || 12),
   idleStopMs: Number(process.env.KOTEL_IDLE_STOP_MS || 120000),
   minConfidence: Number(process.env.KOTEL_MIN_CONFIDENCE || 0.18),
   wpm: Number(process.env.KOTEL_WPM || 95)
@@ -76,6 +77,7 @@ export class KotelEngine {
     this.clients = new Set();
     this.state = { mode: 'off', word: -1, confidence: 0, section: '', updatedAt: 0, source: '' };
     this.transcriptTail = [];
+    this.pace = [];   // זיהויים אחרונים, לחישוב קצב אמירה בפועל
     this.proc = { ytdlp: null, ffmpeg: null };
     this.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kotel-'));
     this.lastClientAt = 0;
@@ -141,6 +143,17 @@ export class KotelEngine {
     return { word: s.word, confidence: s.confidence, section: s.section, mode: s.source || s.mode, at: s.updatedAt };
   }
 
+  /** קצב האמירה בפועל, לפי הזיהויים האחרונים. פיוט מושר איטי בהרבה מקטע נאמר,
+   *  וקצב קבוע היה מקדם את הדף הרבה לפני החזן. */
+  observedWpm() {
+    if (this.pace.length < 3) return CFG.wpm;
+    const first = this.pace[0], last = this.pace[this.pace.length - 1];
+    const minutes = (last.at - first.at) / 60000;
+    const words = last.word - first.word;
+    if (minutes <= 0 || words <= 0) return CFG.wpm;
+    return Math.max(20, Math.min(200, words / minutes));
+  }
+
   setPosition(word, confidence, source) {
     if (word == null || word < 0) return;
     this.state.word = word;
@@ -148,6 +161,12 @@ export class KotelEngine {
     this.state.section = this.sectionFor(word);
     this.state.source = source;
     this.state.updatedAt = Date.now();
+    if (source === 'stt') {
+      this.pace.push({ word, at: this.state.updatedAt });
+      if (this.pace.length > 8) this.pace.shift();
+    } else if (source === 'manual') {
+      this.pace = [];
+    }
     this.broadcast('position', this._positionPayload());
   }
 
@@ -190,6 +209,7 @@ export class KotelEngine {
     this.state.mode = 'off';
     this.state.word = -1;
     this.transcriptTail = [];
+    this.pace = [];   // זיהויים אחרונים, לחישוב קצב אמירה בפועל
     this.broadcast('status', { state: 'idle', message: this._idleMessage() });
   }
 
@@ -350,7 +370,7 @@ export class KotelEngine {
     if (this.state.mode !== 'listening' || this.state.word < 0) return;
     const since = now - this.state.updatedAt;
     if (since > 6000 && since < 90000) {
-      const next = this.aligner.drift(this.state.word, 1000, CFG.wpm);
+      const next = this.aligner.drift(this.state.word, 1000, this.observedWpm());
       if (next !== this.state.word) {
         this.state.word = next;
         this.state.section = this.sectionFor(next);
@@ -384,8 +404,11 @@ async function transcribeOpenAI(wavBuffer) {
 async function transcribeElevenLabs(wavBuffer) {
   const fd = new FormData();
   fd.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'chunk.wav');
-  fd.append('model_id', 'scribe_v1');
+  fd.append('model_id', CFG.elevenModel);
   fd.append('language_code', 'heb');
+  // בלי זה, קטע שבו הקהל שר חוזר כ"[מוזיקה]" או "[שירה]" — מילים שאינן בטקסט
+  // ומזהמות את חלון ההתאמה. עדיף תמלול ריק מאשר תמלול שגוי.
+  fd.append('tag_audio_events', 'false');
   const r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
     method: 'POST', headers: { 'xi-api-key': CFG.elevenKey }, body: fd
   });

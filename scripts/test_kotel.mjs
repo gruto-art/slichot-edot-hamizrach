@@ -20,6 +20,13 @@ const flag = (name, def) => {
   return i >= 0 ? Number(args[i + 1]) : def;
 };
 const SECONDS = flag('seconds', 180);
+// --drive <כתובת>: מזין את המיקומים לשרת חי, כדי לראות את הדף עוקב בפועל
+const driveAt = args.indexOf('--drive');
+const DRIVE = driveAt >= 0 ? args[driveAt + 1] : '';
+const tokenAt = args.indexOf('--token');
+const TOKEN = tokenAt >= 0 ? args[tokenAt + 1] : (process.env.ADMIN_TOKEN || '');
+// --realtime: משהה בין קטעים כמו בשידור אמיתי, במקום לרוץ במלוא המהירות
+const REALTIME = args.includes('--realtime');
 const START = flag('start', 0);
 const SEG = flag('seg', kotelConfig.segSec || 8);
 
@@ -119,6 +126,17 @@ for (let i = 0; i < segs.length; i++) {
   if (accepted) { prev = r.word; prevAt = at; }
 
   rows.push({ at, text, word: accepted ? r.word : null, conf: r?.confidence ?? 0, advance, plausible });
+
+  if (DRIVE && accepted) {
+    try {
+      await fetch(DRIVE.replace(/\/$/, '') + '/api/live/manual', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': TOKEN },
+        body: JSON.stringify({ word: r.word })
+      });
+    } catch (e) { console.warn('         ↳ הזנה לשרת נכשלה:', e.message); }
+  }
+  if (REALTIME && i < segs.length - 1) await new Promise(r2 => setTimeout(r2, SEG * 1000));
   console.log(`[${mmss(at)}] תמלול: ${text.slice(0, 90)}`);
   if (accepted) {
     console.log(`         ↳ מילה ${r.word} · ${sectionFor(r.word)} · ודאות ${r.confidence}` +
