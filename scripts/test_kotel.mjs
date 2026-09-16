@@ -75,7 +75,12 @@ const segs = fs.readdirSync(tmp).filter(f => f.startsWith('seg') && f.endsWith('
 console.log(`נוצרו ${segs.length} קטעים. מתמלל עם ${kotelConfig.provider}…\n`);
 
 /* ---------- 3. תמלול + התאמה, בדיוק כמו במנוע החי ---------- */
-let tail = [], hint = -1, prev = -1;
+// מטמון תמלולים: כיול מנוע ההתאמה לא אמור לעלות כסף על כל ריצה
+const cacheFile = (/^https?:/.test(src) ? path.join(root, 'data/.transcripts-' + Buffer.from(src).toString('base64url').slice(0, 24)) : audio) + `.stt-${SEG}s.json`;
+let cache = {};
+try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch {}
+let cacheHits = 0, apiCalls = 0;
+let tail = [], hint = -1, prev = -1, prevAt = -1;
 const rows = [];
 const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
@@ -83,13 +88,19 @@ for (let i = 0; i < segs.length; i++) {
   const file = path.join(tmp, segs[i]);
   const at = START + i * SEG;
   let text = '';
-  try {
-    const buf = fs.readFileSync(file);
-    if (buf.length < 20000) { rows.push({ at, text: '(שקט)', word: null }); continue; }
-    text = await transcribe(buf);
-  } catch (e) {
-    console.error(`  [${mmss(at)}] תמלול נכשל: ${e.message}`);
-    continue;
+  if (cache[at] !== undefined) { text = cache[at]; cacheHits++; }
+  else {
+    try {
+      const buf = fs.readFileSync(file);
+      if (buf.length < 20000) { rows.push({ at, text: '(שקט)', word: null }); continue; }
+      text = await transcribe(buf);
+      apiCalls++;
+      cache[at] = text;
+      fs.writeFileSync(cacheFile, JSON.stringify(cache));
+    } catch (e) {
+      console.error(`  [${mmss(at)}] תמלול נכשל: ${e.message}`);
+      continue;
+    }
   }
   const toks = tokenize(text);
   tail = tail.concat(toks).slice(-40);
@@ -101,10 +112,13 @@ for (let i = 0; i < segs.length; i++) {
     const minConf = jump > 250 ? Math.max(0.45, kotelConfig.minConfidence) : kotelConfig.minConfidence;
     if (r.confidence >= minConf) { accepted = true; hint = r.word; }
   }
+  // ההתקדמות נמדדת מול הזמן שחלף מאז הזיהוי הקודם, לא מול מספר הקטעים שזוהו
   const advance = accepted && prev >= 0 ? r.word - prev : null;
-  if (accepted) prev = r.word;
+  const elapsedSeg = accepted && prevAt >= 0 ? (at - prevAt) / SEG : 1;
+  const plausible = advance === null || (advance >= -4 && advance <= 40 * Math.max(1, elapsedSeg));
+  if (accepted) { prev = r.word; prevAt = at; }
 
-  rows.push({ at, text, word: accepted ? r.word : null, conf: r?.confidence ?? 0, advance });
+  rows.push({ at, text, word: accepted ? r.word : null, conf: r?.confidence ?? 0, advance, plausible });
   console.log(`[${mmss(at)}] תמלול: ${text.slice(0, 90)}`);
   if (accepted) {
     console.log(`         ↳ מילה ${r.word} · ${sectionFor(r.word)} · ודאות ${r.confidence}` +
@@ -117,15 +131,17 @@ for (let i = 0; i < segs.length; i++) {
 
 /* ---------- 4. סיכום ---------- */
 const hits = rows.filter(r => r.word !== null);
-const forward = hits.filter(r => r.advance !== null && r.advance >= 0 && r.advance < 120).length;
-const jumps = hits.filter(r => r.advance !== null && (r.advance < 0 || r.advance >= 120));
+const moves = hits.filter(r => r.advance !== null);
+const forward = moves.filter(r => r.plausible).length;
+const jumps = moves.filter(r => !r.plausible);
 console.log('\n' + '─'.repeat(60));
 console.log(`קטעים: ${rows.length} · זוהה מיקום ב-${hits.length}` + (rows.length ? ` (${Math.round(hits.length / rows.length * 100)}%)` : ''));
-console.log(`התקדמות טבעית קדימה: ${forward}/${Math.max(1, hits.length - 1)} מהמעברים`);
+console.log(`התקדמות סבירה לפי הזמן שחלף: ${forward}/${Math.max(1, moves.length)} מהמעברים`);
 if (!hits.length) console.log('לא זוהה אף מיקום — בדקו את מפתח התמלול ואת איכות האודיו.');
 if (jumps.length) console.log(`קפיצות חשודות: ${jumps.length} — ${jumps.map(j => mmss(j.at)).join(', ')}`);
 const avgConf = hits.length ? (hits.reduce((s, r) => s + r.conf, 0) / hits.length).toFixed(2) : 0;
 console.log(`ודאות ממוצעת: ${avgConf}`);
+console.log(`תמלול: ${apiCalls} קריאות API, ${cacheHits} מהמטמון`);
 console.log(`פרקים שזוהו לפי הסדר: ${[...new Set(hits.map(h => sectionFor(h.word)))].join(' → ')}`);
 
 fs.rmSync(tmp, { recursive: true, force: true });

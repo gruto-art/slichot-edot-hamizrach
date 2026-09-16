@@ -3,9 +3,20 @@
 const FINALS = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
 const SEP = '|';
 
+// שם ה׳ נכתב "יהוה" ונקרא "אֲדֹנָי" — כל מנוע תמלול יתמלל את הקריאה.
+// הוא מופיע ב-2.5% ממילות הסדר, וריכוזו דווקא בנוסחאות החוזרות (י״ג מידות וכו׳),
+// ולכן בלי איחוד הצורות נופלים בדיוק הקטעים הקלים לזיהוי.
+const DIVINE = new Set(['יהוה', 'אדני', 'אדוני', 'הויה', 'ה']);
+const PREFIX = 'ובלמכש';
+function canonicalName(w) {
+  if (DIVINE.has(w)) return 'יהוה';
+  if (w.length > 1 && PREFIX.includes(w[0]) && DIVINE.has(w.slice(1))) return w[0] + 'יהוה';
+  return w;
+}
+
 export function normalizeWord(w) {
   w = w.replace(/[֑-ׇ]/g, '').replace(/[^א-ת]/g, '');
-  return w.split('').map(c => FINALS[c] || c).join('');
+  return canonicalName(w.split('').map(c => FINALS[c] || c).join(''));
 }
 
 // שלד עיצורי: הסרת אותיות אהו"י (מקור עיקרי לשגיאות תמלול בעברית)
@@ -18,12 +29,13 @@ export function tokenize(text) {
 export class Aligner {
   /** @param {string[]} words מערך המילים המנורמלות של כל הסדר (כולל ריקות במקומן) */
   constructor(words, opts = {}) {
-    this.words = words;
+    // מאחדים גם את מילות הסדר, כדי שיהיו באותה צורה קנונית כמו התמלול
+    this.words = words.map(w => (w ? canonicalName(w) : w));
     this.n = opts.n || 3;
     // מיפוי אינדקס "דחוס" (רק מילים אמיתיות) -> אינדקס גלובלי
     this.real = [];
     for (let i = 0; i < words.length; i++) if (words[i]) this.real.push(i);
-    this.dense = this.real.map(i => words[i]);
+    this.dense = this.real.map(i => this.words[i]);
     this.gramIndex = this._buildIndex(this.dense, w => w);
     this.skelIndex = this._buildIndex(this.dense, skeleton);
   }
@@ -75,6 +87,10 @@ export class Aligner {
 
     cast(this.gramIndex, w => w, 1);
     if (votes.size === 0) cast(this.skelIndex, skeleton, 0.72);
+    // קטעי ארמית ("רחמנא אדכר לן קימה ד...") יוצאים מהתמלול מרוסקים, ושלוש מילים
+    // רצופות נכונות הן נדירות שם. כשכבר יודעים היכן אוחזים, די בחפיפת מילים בודדות
+    // בחלון מקומי כדי להמשיך להתקדם.
+    if (votes.size === 0 && hintDense >= 0) return this._localScan(tail, hintDense);
     if (votes.size === 0) return null;
 
     // איחוד קולות שכנים (עד שתי מילים) כדי לייצב את התוצאה
@@ -94,6 +110,32 @@ export class Aligner {
     const confidence = Math.max(0, Math.min(1, Math.round(share * 2.7 * 100) / 100));
     const dense = Math.max(0, Math.min(this.dense.length - 1, best));
     return { word: this.real[dense], dense, confidence: Math.round(confidence * 100) / 100, matched: tail.length };
+  }
+
+  /** סריקה מקומית: מדרגת חלונות סביב המיקום הידוע לפי חפיפת מילים, בלי דרישת רצף */
+  _localScan(tail, hintDense) {
+    const from = Math.max(0, hintDense - 30);
+    const to = Math.min(this.dense.length - 1, hintDense + 220);
+    if (to - from < 10) return null;
+    const uniq = [...new Set(tail.filter(w => w.length >= 3))];
+    if (uniq.length < 3) return null;
+    const win = Math.max(12, tail.length);
+    let best = -1, bestScore = 0, total = 0;
+    for (let start = from; start + win <= to; start++) {
+      const bag = new Set(this.dense.slice(start, start + win));
+      let sc = 0;
+      for (const w of uniq) {
+        if (bag.has(w)) sc += 1;
+        else if (bag.has(skeleton(w))) sc += 0.5;
+      }
+      if (sc <= 0) continue;
+      total += sc;
+      if (sc > bestScore) { bestScore = sc; best = start + win - 1; }
+    }
+    if (best < 0 || bestScore < 3) return null;
+    const confidence = Math.max(0, Math.min(0.5, Math.round((bestScore / uniq.length) * 100) / 100));
+    const dense = Math.max(0, Math.min(this.dense.length - 1, best));
+    return { word: this.real[dense], dense, confidence, matched: tail.length, local: true };
   }
 
   _toDense(globalIdx) {
