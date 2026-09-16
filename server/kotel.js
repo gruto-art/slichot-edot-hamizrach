@@ -130,13 +130,15 @@ export class KotelEngine {
       this.broadcast('status', { state: 'idle', message: this._idleMessage() });
       return;
     }
-    if (this.proc.ytdlp) return;
+    if (this.proc.ffmpeg || this.pendingStart) return;
+    this.pendingStart = true;
     this.state.mode = 'starting';
     this.broadcast('status', { state: 'starting' });
-    this._startIngest(reason);
+    this._startIngest(reason).finally(() => { this.pendingStart = false; });
   }
 
   stopIngest() {
+    this.pendingStart = false;
     for (const k of ['ffmpeg', 'ytdlp']) {
       try { this.proc[k]?.kill('SIGKILL'); } catch {}
       this.proc[k] = null;
@@ -151,35 +153,61 @@ export class KotelEngine {
     this.broadcast('status', { state: 'idle', message: this._idleMessage() });
   }
 
-  _startIngest() {
+  async _startIngest() {
     const dir = this.tmpDir;
     for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
 
-    const ytdlp = spawn('yt-dlp', ['-q', '--no-warnings', '--no-part', '-f', CFG.ytFormat, '-o', '-', CFG.streamUrl],
-      { stdio: ['ignore', 'pipe', 'pipe'] });
-    const ffmpeg = spawn(this.ffmpegPath || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
+    // שלב א: yt-dlp מחלץ את כתובת ה-HLS הישירה (יציב הרבה יותר מהזרמה דרך צינור)
+    let mediaUrl;
+    try {
+      mediaUrl = await this._resolveMediaUrl();
+    } catch (e) {
+      return this._fail('yt-dlp: ' + e.message);
+    }
+    if (!this.pendingStart) return;   // בוטל בינתיים
+
+    // שלב ב: ffmpeg קולט את ה-HLS ישירות וחותך לקטעי WAV
+    const ffmpeg = spawn(this.ffmpegPath || 'ffmpeg', [
+      '-hide_banner', '-loglevel', 'error',
+      '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
+      '-i', mediaUrl,
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
       '-segment_time', String(CFG.segSec), '-reset_timestamps', '1',
-      path.join(dir, 'seg%05d.wav')], { stdio: ['pipe', 'ignore', 'pipe'] });
+      path.join(dir, 'seg%05d.wav')
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
-    ytdlp.stdout.pipe(ffmpeg.stdin);
-    ytdlp.on('error', e => this._fail('yt-dlp: ' + e.message));
     ffmpeg.on('error', e => this._fail('ffmpeg: ' + e.message));
-    ytdlp.stderr.on('data', d => console.warn('[kotel][yt-dlp]', String(d).trim().slice(0, 200)));
     ffmpeg.stderr.on('data', d => console.warn('[kotel][ffmpeg]', String(d).trim().slice(0, 200)));
     ffmpeg.on('exit', code => {
-      if (this.proc.ffmpeg === ffmpeg) {
-        this.proc.ffmpeg = null;
-        console.warn('[kotel] ffmpeg exited', code);
-        if (this.clients.size) setTimeout(() => this.start('retry'), 5000);
-      }
+      if (this.proc.ffmpeg !== ffmpeg) return;
+      this.proc.ffmpeg = null;
+      console.warn('[kotel] ffmpeg exited', code);
+      // כתובות HLS פגות תוקף — מרעננים ומתחברים מחדש כל עוד יש מאזינים
+      if (this.clients.size) setTimeout(() => { this.state.mode = 'off'; this.start('reconnect'); }, 4000);
     });
 
-    this.proc.ytdlp = ytdlp;
     this.proc.ffmpeg = ffmpeg;
     this.state.mode = 'listening';
     this.broadcast('status', { state: 'listening' });
     this._watchSegments();
+  }
+
+  _resolveMediaUrl() {
+    return new Promise((resolve, reject) => {
+      const p = spawn('yt-dlp', ['--no-warnings', '--socket-timeout', '25',
+        '-f', CFG.ytFormat, '-g', CFG.streamUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '', err = '';
+      p.stdout.on('data', d => { out += d; });
+      p.stderr.on('data', d => { err += d; });
+      p.on('error', reject);
+      p.on('exit', code => {
+        const url = out.trim().split('\n').filter(Boolean).pop();
+        if (code === 0 && url && /^https?:/.test(url)) resolve(url);
+        else reject(new Error(err.trim().slice(0, 200) || 'exit ' + code));
+      });
+      this.proc.ytdlp = p;
+      setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 40000);
+    });
   }
 
   _fail(msg) {
