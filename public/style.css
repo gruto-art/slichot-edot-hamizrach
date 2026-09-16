@@ -162,3 +162,10 @@ l{display:block;text-indent:0;margin-bottom:.18em}
 l:last-child{margin-bottom:0}
 .prose p{margin-bottom:1.75rem}
 @media(min-width:720px){ l{padding-inline-end:0} }
+
+/* רצועת מידע מהיר */
+.quickfacts{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:1rem 1.1rem;margin-bottom:1.3rem;box-shadow:var(--shadow)}
+.quickfacts dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.9rem 1.4rem;margin:0}
+.quickfacts dt{font-size:.74rem;letter-spacing:.06em;color:var(--gold);margin-bottom:.15rem}
+.quickfacts dd{margin:0;font-size:.98rem;color:var(--fg);font-weight:500}
+.quickfacts a{color:var(--fg)}

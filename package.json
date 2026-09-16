@@ -9,9 +9,9 @@
   },
   "scripts": {
     "build": "node scripts/build_site.mjs",
-    "start": "npm run build && node server/index.js",
-    "dev": "npm run build && node --watch server/index.js",
-    "test:kotel": "node scripts/test_kotel.mjs"
+    "start": "npm run build && node --env-file-if-exists=.env server/index.js",
+    "dev": "npm run build && node --env-file-if-exists=.env --watch server/index.js",
+    "test:kotel": "node --env-file-if-exists=.env scripts/test_kotel.mjs"
   },
   "dependencies": {
     "express": "^4.21.2"
