@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Aligner, tokenize } from './matcher.js';
+import { Tracker } from './tracker.js';
 
 // ffmpeg: מעדיפים את הבינארי של המערכת (כך זה בייצור, בתוך ה-Docker);
 // בפיתוח מקומי נופלים ל-ffmpeg-static אם הותקן.
@@ -26,16 +27,24 @@ const CFG = {
   ytFormat: process.env.KOTEL_YTDLP_FORMAT || '91/bestaudio*/worst',
   // כתובת HLS ישירה נקלטת בלי yt-dlp כלל (חוסך את בדיקת הבוטים של יוטיוב)
   streamReferer: process.env.KOTEL_STREAM_REFERER || '',
+  // לבדיקות על הקלטה של שידור שהסתיים: קריאה בקצב אמיתי, מנקודת התחלה נתונה
+  realtime: process.env.KOTEL_REALTIME === '1',
+  startSec: Number(process.env.KOTEL_START_SEC || 0),
   ytCookies: process.env.YTDLP_COOKIES || '',
   provider: (process.env.STT_PROVIDER || 'openai').toLowerCase(),
   openaiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe',
   elevenKey: process.env.ELEVENLABS_API_KEY || '',
   elevenModel: process.env.ELEVENLABS_STT_MODEL || 'scribe_v1',
+  // הטיית התמלול לטקסט הצפוי: המשפטים הבאים מהמקום שבו אוחזים (עלות תמלול +20%)
+  biasPrompt: process.env.STT_BIAS === '1',
   segSec: Number(process.env.KOTEL_SEGMENT_SEC || 12),
   idleStopMs: Number(process.env.KOTEL_IDLE_STOP_MS || 120000),
   minConfidence: Number(process.env.KOTEL_MIN_CONFIDENCE || 0.18),
-  wpm: Number(process.env.KOTEL_WPM || 95)
+  wpm: Number(process.env.KOTEL_WPM || 95),
+  // כמה מילים מותר לדף להתקדם לבד מעבר לזיהוי האחרון. בלי תקרה הדף "בורח" קדימה
+  // בזמן שירה ארוכה, והזיהוי הבא מושך אותו אחורה — וזה נראה כקפיצה.
+  driftCap: Number(process.env.KOTEL_DRIFT_CAP || 30)
 };
 
 // יוטיוב חוסמת כתובות IP של מרכזי נתונים ("Sign in to confirm you're not a bot").
@@ -82,9 +91,11 @@ export class KotelEngine {
     this.onPosition = onPosition;
     this.remote = { at: 0, ingesting: false };
     this.aligner = new Aligner(words);
+    this.tracker = new Tracker(this.aligner);
+    setBiasText(doc);
+    this.sttWord = -1;   // הזיהוי האחרון מהתמלול (לא כולל התקדמות משוערת)
     this.clients = new Set();
     this.state = { mode: 'off', word: -1, confidence: 0, section: '', updatedAt: 0, source: '' };
-    this.transcriptTail = [];
     this.pace = [];   // זיהויים אחרונים, לחישוב קצב אמירה בפועל
     this.proc = { ytdlp: null, ffmpeg: null };
     this.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kotel-'));
@@ -170,11 +181,14 @@ export class KotelEngine {
     this.state.source = source;
     this.state.updatedAt = Date.now();
     if (source === 'stt') {
+      this.sttWord = word;
       this.pace.push({ word, at: this.state.updatedAt });
       if (this.pace.length > 8) this.pace.shift();
       this.onPosition?.(word, confidence);
     } else if (source === 'manual') {
       this.pace = [];
+      this.sttWord = word;
+      this.tracker.reset(word, Date.now());
     }
     this.broadcast('position', this._positionPayload());
   }
@@ -238,7 +252,8 @@ export class KotelEngine {
     this.stopIngest();
     this.state.mode = 'off';
     this.state.word = -1;
-    this.transcriptTail = [];
+    this.sttWord = -1;
+    this.tracker.reset();
     this.pace = [];   // זיהויים אחרונים, לחישוב קצב אמירה בפועל
     this.broadcast('status', { state: 'idle', message: this._idleMessage() });
   }
@@ -265,9 +280,10 @@ export class KotelEngine {
     const headers = CFG.streamReferer ? ['-headers', `Referer: ${CFG.streamReferer}\r\n`] : [];
     const ffmpeg = spawn(this.ffmpegPath || 'ffmpeg', [
       '-hide_banner', '-loglevel', 'error',
-      '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
+      ...(local ? [] : ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']),
       ...headers,
-      ...(local ? ['-re'] : []),
+      ...(local || CFG.realtime ? ['-re'] : []),
+      ...(CFG.startSec ? ['-ss', String(CFG.startSec)] : []),
       '-i', mediaUrl,
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
       '-segment_time', String(CFG.segSec), '-reset_timestamps', '1',
@@ -370,7 +386,7 @@ export class KotelEngine {
     try {
       const buf = fs.readFileSync(file);
       if (buf.length < 20000) return; // קטע קצר/שקט מדי
-      text = await transcribe(buf);
+      text = await transcribe(buf, { hintWord: this.sttWord });
     } catch (e) {
       console.warn('[kotel] transcribe failed:', e.message);
       return;
@@ -378,15 +394,9 @@ export class KotelEngine {
     if (!text) return;
     const toks = tokenize(text);
     if (!toks.length) return;
-    this.transcriptTail = this.transcriptTail.concat(toks).slice(-40);
-    const hint = this.state.word;
-    const r = this.aligner.locate(this.transcriptTail, hint);
-    if (!r) return;
-    // שמירה על יציבות: קפיצה רחוקה מתקבלת רק בוודאות גבוהה
-    const jump = hint >= 0 ? Math.abs(r.word - hint) : 0;
-    const minConf = jump > 250 ? Math.max(0.45, CFG.minConfidence) : CFG.minConfidence;
-    if (r.confidence < minConf) return;
-    this.setPosition(r.word, r.confidence, 'stt');
+    // היגיון ההתקדמות (tracker.js) מחליט אם זו התקדמות רגילה, דילוג מאושר או רעש
+    const r = this.tracker.update(toks, Date.now());
+    if (r) this.setPosition(r.word, r.confidence, 'stt');
   }
 
   /* ---------- פעימה: המשך משוער + כיבוי בהיעדר מאזינים ---------- */
@@ -410,7 +420,8 @@ export class KotelEngine {
     const since = now - this.state.updatedAt;
     if (since > 6000 && since < 90000) {
       const next = this.aligner.drift(this.state.word, 1000, this.observedWpm());
-      if (next !== this.state.word) {
+      const ahead = this.sttWord >= 0 ? this.aligner.toDense(next) - this.aligner.toDense(this.sttWord) : 0;
+      if (next !== this.state.word && ahead <= CFG.driftCap) {
         this.state.word = next;
         this.state.section = this.sectionFor(next);
         this.state.updatedAt = now - (since - 1000);
@@ -420,18 +431,46 @@ export class KotelEngine {
   }
 }
 
-/* ---------- ספקי תמלול ---------- */
-async function transcribe(wavBuffer) {
-  if (CFG.provider === 'elevenlabs') return transcribeElevenLabs(wavBuffer);
-  return transcribeOpenAI(wavBuffer);
+/* ---------- הטיה לטקסט הצפוי ---------- */
+let plainWords = [];   // אינדקס גלובלי -> מילה בלי ניקוד
+export function setBiasText(doc) {
+  plainWords = [];
+  for (const s of doc.sections) for (const p of s.paragraphs) for (const w of p.w) {
+    plainWords[w.i] = w.t.replace(/[\u0591-\u05C7]/g, '').replace(/[^א-ת ]/g, '').trim();
+  }
 }
 
-async function transcribeOpenAI(wavBuffer) {
+/** צירופים של 3 מילים מהמקום הנוכחי והלאה — מה שהחזן צפוי לומר ב-12 השניות הקרובות */
+function expectedPhrases(hintWord, max = 90) {
+  if (!CFG.biasPrompt || hintWord == null || hintWord < 0 || !plainWords.length) return [];
+  const words = [];
+  for (let i = Math.max(0, hintWord - 6); i < plainWords.length && words.length < max * 3; i++) {
+    const w = plainWords[i];
+    if (w) words.push(w === 'יהוה' ? 'ה׳' : w);
+  }
+  const out = [];
+  for (let i = 0; i + 3 <= words.length && out.length < max; i += 3) {
+    const ph = words.slice(i, i + 3).join(' ').replace(/[<>{}[\]\\]/g, '');
+    if (ph.length < 50) out.push(ph);
+  }
+  return out;
+}
+
+/* ---------- ספקי תמלול ---------- */
+async function transcribe(wavBuffer, { hintWord = -1 } = {}) {
+  const phrases = expectedPhrases(hintWord);
+  if (CFG.provider === 'elevenlabs') return transcribeElevenLabs(wavBuffer, phrases);
+  return transcribeOpenAI(wavBuffer, phrases);
+}
+
+async function transcribeOpenAI(wavBuffer, phrases = []) {
   const fd = new FormData();
   fd.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'chunk.wav');
   fd.append('model', CFG.openaiModel);
   fd.append('language', 'he');
-  fd.append('prompt', 'סליחות נוסח עדות המזרח, פיוטים ותפילה בעברית.');
+  fd.append('prompt', phrases.length
+    ? 'סליחות נוסח עדות המזרח. הטקסט הצפוי: ' + phrases.slice(0, 30).join(' ')
+    : 'סליחות נוסח עדות המזרח, פיוטים ותפילה בעברית.');
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST', headers: { Authorization: `Bearer ${CFG.openaiKey}` }, body: fd
   });
@@ -440,7 +479,7 @@ async function transcribeOpenAI(wavBuffer) {
   return j.text || '';
 }
 
-async function transcribeElevenLabs(wavBuffer) {
+async function transcribeElevenLabs(wavBuffer, phrases = []) {
   const fd = new FormData();
   fd.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'chunk.wav');
   fd.append('model_id', CFG.elevenModel);
@@ -448,6 +487,7 @@ async function transcribeElevenLabs(wavBuffer) {
   // בלי זה, קטע שבו הקהל שר חוזר כ"[מוזיקה]" או "[שירה]" — מילים שאינן בטקסט
   // ומזהמות את חלון ההתאמה. עדיף תמלול ריק מאשר תמלול שגוי.
   fd.append('tag_audio_events', 'false');
+  for (const ph of phrases) fd.append('keyterms', ph);
   const r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
     method: 'POST', headers: { 'xi-api-key': CFG.elevenKey }, body: fd
   });

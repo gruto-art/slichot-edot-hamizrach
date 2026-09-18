@@ -58,6 +58,18 @@ export class Aligner {
    * @param {number} hint אינדקס גלובלי משוער נוכחי (-1 אם אין)
    */
   locate(tokens, hint = -1) {
+    const c = this.candidates(tokens, hint, 1);
+    if (c === null) return null;
+    if (c.local) return c.local;
+    return c.list[0] || null;
+  }
+
+  /**
+   * כל המועמדים, מדורגים. המעקב (tracker.js) בוחר ביניהם לפי היגיון התקדמות,
+   * כי צירופים חוזרים (י״ג מידות, פזמונים) מופיעים בכמה מקומות בסדר.
+   * @returns {{list: object[], total: number, local?: object} | null}
+   */
+  candidates(tokens, hint = -1, k = 8) {
     const n = this.n;
     if (!tokens || tokens.length < n) return null;
     const tail = tokens.slice(-24);
@@ -66,9 +78,9 @@ export class Aligner {
 
     const cast = (index, fn, weight) => {
       for (let t = 0; t + n <= tail.length; t++) {
-        let k = '';
-        for (let j = 0; j < n; j++) k += (j ? SEP : '') + fn(tail[t + j]);
-        const hits = index.get(k);
+        let key = '';
+        for (let j = 0; j < n; j++) key += (j ? SEP : '') + fn(tail[t + j]);
+        const hits = index.get(key);
         if (!hits || hits.length > 60) continue;              // מדלג על צירופים נפוצים מדי
         const recency = 0.45 + 0.55 * ((t + n) / tail.length); // משקל גדל לסוף התמלול
         const rarity = 1 / Math.sqrt(hits.length);
@@ -90,8 +102,10 @@ export class Aligner {
     // קטעי ארמית ("רחמנא אדכר לן קימה ד...") יוצאים מהתמלול מרוסקים, ושלוש מילים
     // רצופות נכונות הן נדירות שם. כשכבר יודעים היכן אוחזים, די בחפיפת מילים בודדות
     // בחלון מקומי כדי להמשיך להתקדם.
-    if (votes.size === 0 && hintDense >= 0) return this._localScan(tail, hintDense);
-    if (votes.size === 0) return null;
+    if (votes.size === 0) {
+      const local = hintDense >= 0 ? this._localScan(tail, hintDense) : null;
+      return local ? { list: [], total: 0, local } : null;
+    }
 
     // איחוד קולות שכנים (עד שתי מילים) כדי לייצב את התוצאה
     const merged = new Map();
@@ -101,21 +115,27 @@ export class Aligner {
         merged.set(p, (merged.get(p) || 0) + sc * (d === 0 ? 1 : 0.4));
       }
     }
-    let best = -1, bestScore = 0, total = 0;
-    for (const [pos, sc] of merged) { total += sc; if (sc > bestScore) { bestScore = sc; best = pos; } }
-    if (best < 0) return null;
-
-    // נורמול: נתח הקולות של המועמד המוביל, מתוח לסקלה קריאה (0.38 ומעלה = ודאות מלאה)
-    const share = total > 0 ? bestScore / total : 0;
-    const confidence = Math.max(0, Math.min(1, Math.round(share * 2.7 * 100) / 100));
-    const dense = Math.max(0, Math.min(this.dense.length - 1, best));
-    return { word: this.real[dense], dense, confidence: Math.round(confidence * 100) / 100, matched: tail.length };
+    let total = 0;
+    for (const sc of merged.values()) total += sc;
+    // מועמדים מקומיים: שיא אחד לכל אשכול של 6 מילים
+    const sorted = [...merged].sort((a, b) => b[1] - a[1]);
+    const list = [];
+    for (const [pos, sc] of sorted) {
+      if (list.length >= k) break;
+      if (list.some(c => Math.abs(c.dense - pos) < 6)) continue;
+      const dense = Math.max(0, Math.min(this.dense.length - 1, pos));
+      // נורמול: נתח הקולות של המועמד, מתוח לסקלה קריאה (0.38 ומעלה = ודאות מלאה)
+      const share = total > 0 ? sc / total : 0;
+      const confidence = Math.max(0, Math.min(1, Math.round(share * 2.7 * 100) / 100));
+      list.push({ word: this.real[dense], dense, score: sc, confidence, matched: tail.length });
+    }
+    return { list, total };
   }
 
   /** סריקה מקומית: מדרגת חלונות סביב המיקום הידוע לפי חפיפת מילים, בלי דרישת רצף */
-  _localScan(tail, hintDense) {
+  _localScan(tail, hintDense, ahead = 220) {
     const from = Math.max(0, hintDense - 30);
-    const to = Math.min(this.dense.length - 1, hintDense + 220);
+    const to = Math.min(this.dense.length - 1, hintDense + ahead);
     if (to - from < 10) return null;
     const uniq = [...new Set(tail.filter(w => w.length >= 3))];
     if (uniq.length < 3) return null;
@@ -135,8 +155,11 @@ export class Aligner {
     if (best < 0 || bestScore < 3) return null;
     const confidence = Math.max(0, Math.min(0.5, Math.round((bestScore / uniq.length) * 100) / 100));
     const dense = Math.max(0, Math.min(this.dense.length - 1, best));
-    return { word: this.real[dense], dense, confidence, matched: tail.length, local: true };
+    return { word: this.real[dense], dense, score: bestScore, confidence, matched: tail.length, local: true };
   }
+
+  toDense(globalIdx) { return this._toDense(globalIdx); }
+  toGlobal(dense) { return this.real[Math.max(0, Math.min(this.real.length - 1, dense))]; }
 
   _toDense(globalIdx) {
     let lo = 0, hi = this.real.length - 1, res = -1;

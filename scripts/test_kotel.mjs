@@ -10,7 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Aligner, tokenize } from '../server/matcher.js';
-import { transcribe, kotelConfig, resolveFfmpeg } from '../server/kotel.js';
+import { Tracker } from '../server/tracker.js';
+import { transcribe, kotelConfig, resolveFfmpeg, setBiasText } from '../server/kotel.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -36,8 +37,12 @@ if (!src) {
 }
 
 const doc = JSON.parse(fs.readFileSync(path.join(root, 'data/slichot.json'), 'utf8'));
+setBiasText(doc);
 const words = JSON.parse(fs.readFileSync(path.join(root, 'data/index_words.json'), 'utf8'));
 const aligner = new Aligner(words);
+const tracker = new Tracker(aligner, process.env.TRACKER_OPTS ? JSON.parse(process.env.TRACKER_OPTS) : {});
+// --no-tracker: ההתנהגות הישנה (המועמד החזק ביותר בכל הסדר), להשוואה
+const NO_TRACKER = args.includes('--no-tracker');
 
 // מיפוי אינדקס מילה -> שם פרק
 const secMap = doc.sections.map(s => {
@@ -82,8 +87,13 @@ const segs = fs.readdirSync(tmp).filter(f => f.startsWith('seg') && f.endsWith('
 console.log(`נוצרו ${segs.length} קטעים. מתמלל עם ${kotelConfig.provider}…\n`);
 
 /* ---------- 3. תמלול + התאמה, בדיוק כמו במנוע החי ---------- */
+// מודל שאינו ברירת המחדל נשמר במטמון נפרד, כדי שאפשר יהיה להשוות מודלים
+function sttTag() {
+  const m = kotelConfig.provider === 'elevenlabs' ? kotelConfig.elevenModel : kotelConfig.openaiModel;
+  return (m === 'scribe_v1' || m === 'gpt-4o-mini-transcribe') && !kotelConfig.biasPrompt ? '' : '-' + m + (kotelConfig.biasPrompt ? '-bias' : '');
+}
 // מטמון תמלולים: כיול מנוע ההתאמה לא אמור לעלות כסף על כל ריצה
-const cacheFile = (/^https?:/.test(src) ? path.join(root, 'data/.transcripts-' + Buffer.from(src).toString('base64url').slice(0, 24)) : audio) + `.stt-${SEG}s.json`;
+const cacheFile = (/^https?:/.test(src) ? path.join(root, 'data/.transcripts-' + Buffer.from(src).toString('base64url').slice(0, 24)) : audio) + `.stt-${SEG}s${sttTag()}.json`;
 let cache = {};
 try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch {}
 let cacheHits = 0, apiCalls = 0;
@@ -100,7 +110,7 @@ for (let i = 0; i < segs.length; i++) {
     try {
       const buf = fs.readFileSync(file);
       if (buf.length < 20000) { rows.push({ at, text: '(שקט)', word: null }); continue; }
-      text = await transcribe(buf);
+      text = await transcribe(buf, { hintWord: hint });
       apiCalls++;
       cache[at] = text;
       fs.writeFileSync(cacheFile, JSON.stringify(cache));
@@ -110,14 +120,18 @@ for (let i = 0; i < segs.length; i++) {
     }
   }
   const toks = tokenize(text);
-  tail = tail.concat(toks).slice(-40);
-  const r = toks.length ? aligner.locate(tail, hint) : null;
-
-  let accepted = false;
-  if (r) {
-    const jump = hint >= 0 ? Math.abs(r.word - hint) : 0;
-    const minConf = jump > 250 ? Math.max(0.45, kotelConfig.minConfidence) : kotelConfig.minConfidence;
-    if (r.confidence >= minConf) { accepted = true; hint = r.word; }
+  let r = null, accepted = false;
+  if (NO_TRACKER) {
+    tail = tail.concat(toks).slice(-40);
+    r = toks.length ? aligner.locate(tail, hint) : null;
+    if (r) {
+      const jump = hint >= 0 ? Math.abs(r.word - hint) : 0;
+      const minConf = jump > 250 ? Math.max(0.45, kotelConfig.minConfidence) : kotelConfig.minConfidence;
+      if (r.confidence >= minConf) { accepted = true; hint = r.word; }
+    }
+  } else {
+    r = tracker.update(toks, at * 1000);
+    if (r) { accepted = true; hint = r.word; }
   }
   // ההתקדמות נמדדת מול הזמן שחלף מאז הזיהוי הקודם, לא מול מספר הקטעים שזוהו
   const advance = accepted && prev >= 0 ? r.word - prev : null;
@@ -125,7 +139,7 @@ for (let i = 0; i < segs.length; i++) {
   const plausible = advance === null || (advance >= -4 && advance <= 40 * Math.max(1, elapsedSeg));
   if (accepted) { prev = r.word; prevAt = at; }
 
-  rows.push({ at, text, word: accepted ? r.word : null, conf: r?.confidence ?? 0, advance, plausible });
+  rows.push({ at, text, word: accepted ? r.word : null, conf: r?.confidence ?? 0, advance, plausible, kind: r?.kind });
 
   if (DRIVE && accepted) {
     try {
@@ -139,7 +153,7 @@ for (let i = 0; i < segs.length; i++) {
   if (REALTIME && i < segs.length - 1) await new Promise(r2 => setTimeout(r2, SEG * 1000));
   console.log(`[${mmss(at)}] תמלול: ${text.slice(0, 90)}`);
   if (accepted) {
-    console.log(`         ↳ מילה ${r.word} · ${sectionFor(r.word)} · ודאות ${r.confidence}` +
+    console.log(`         ↳ מילה ${r.word} · ${sectionFor(r.word)} · ודאות ${r.confidence}` + (r.kind === 'jump' ? ' · קפיצה מאושרת' : '') +
       (advance !== null ? ` · התקדמות ${advance > 0 ? '+' : ''}${advance} מילים` : ''));
     console.log(`         ↳ בטקסט: …${textAt(r.word)}`);
   } else {
@@ -157,8 +171,19 @@ console.log(`קטעים: ${rows.length} · זוהה מיקום ב-${hits.length}
 console.log(`התקדמות סבירה לפי הזמן שחלף: ${forward}/${Math.max(1, moves.length)} מהמעברים`);
 if (!hits.length) console.log('לא זוהה אף מיקום — בדקו את מפתח התמלול ואת איכות האודיו.');
 if (jumps.length) console.log(`קפיצות חשודות: ${jumps.length} — ${jumps.map(j => mmss(j.at)).join(', ')}`);
+// קפיצה הלוך-חזור: מעבר של יותר מ-100 מילים שבתוך שלושה זיהויים חוזר לסביבת המקום הקודם.
+// זה מה שהמשתמש רואה כ"קפיצות מצד לצד" — שגיאה ודאית, לא דילוג של החזן.
+const flips = [];
+for (let i = 1; i < hits.length; i++) {
+  const before = hits[i - 1].word;
+  if (Math.abs(hits[i].word - before) <= 100) continue;
+  if (hits.slice(i + 1, i + 4).some(h => Math.abs(h.word - before) < 60)) flips.push(hits[i]);
+}
+console.log(`קפיצות הלוך-חזור (שגיאות ודאיות): ${flips.length}` + (flips.length ? ' — ' + flips.map(f => mmss(f.at)).join(', ') : ''));
 const avgConf = hits.length ? (hits.reduce((s, r) => s + r.conf, 0) / hits.length).toFixed(2) : 0;
 console.log(`ודאות ממוצעת: ${avgConf}`);
+const confirmedJumps = hits.filter(h => h.kind === 'jump');
+if (confirmedJumps.length) console.log(`קפיצות מאושרות (דילוג של החזן): ${confirmedJumps.map(j => mmss(j.at) + '→' + sectionFor(j.word)).join(', ')}`);
 console.log(`תמלול: ${apiCalls} קריאות API, ${cacheHits} מהמטמון`);
 console.log(`פרקים שזוהו לפי הסדר: ${[...new Set(hits.map(h => sectionFor(h.word)))].join(' → ')}`);
 
