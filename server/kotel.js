@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Aligner, tokenize } from './matcher.js';
 import { Tracker } from './tracker.js';
+import { JevShadow, jevEnabled } from './jev.js';
 
 // ffmpeg: מעדיפים את הבינארי של המערכת (כך זה בייצור, בתוך ה-Docker);
 // בפיתוח מקומי נופלים ל-ffmpeg-static אם הותקן.
@@ -133,6 +134,8 @@ export class KotelEngine {
     this.channelCheckedAt = 0;
     this.aligner = new Aligner(words);
     this.tracker = new Tracker(this.aligner);
+    this.jev = jevEnabled ? new JevShadow(doc) : null;
+    if (this.jev) console.log('[kotel] Jev במצב צל — רושם בלבד');
     setBiasText(doc);
     this.sttWord = -1;   // הזיהוי האחרון מהתמלול (לא כולל התקדמות משוערת)
     this.clients = new Set();
@@ -561,6 +564,9 @@ export class KotelEngine {
     // היגיון ההתקדמות (tracker.js) מחליט אם זו התקדמות רגילה, דילוג מאושר או רעש
     const r = this.tracker.update(toks, Date.now());
     if (r) this.setPosition(r.word, r.confidence, 'stt');
+    // מצב צל: Jev רק רושם את דעתו לצד החלטת המנגנון הקיים
+    this.jev?.observe(text, r ? { word: r.word, section: this.sectionFor(r.word), kind: r.kind } : null,
+      { shown: this.sectionFor(this.state.word), source: this.source?.url || '' });
   }
 
   /* ---------- פעימה: המשך משוער + כיבוי בהיעדר מאזינים ---------- */
