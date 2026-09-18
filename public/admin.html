@@ -33,6 +33,13 @@ tr:last-child td{border-bottom:0}
 input,button{font-family:inherit;background:var(--card);color:var(--fg);border:1px solid var(--rule);border-radius:7px;padding:.45rem .8rem;font-size:.85rem}
 button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
 .muted{color:var(--soft);font-size:.8rem}
+.live{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:1rem;margin-bottom:1.6rem}
+.live .row{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem}
+.live input{flex:1;min-width:220px;direction:ltr;text-align:left}
+.live .st{font-size:.88rem;line-height:1.8}
+.live .st b{color:var(--gold);font-weight:600}
+.live a{color:var(--gold)}
+.warn{color:#e0a040}
 .tag{font-size:.7rem;border:1px solid var(--rule);border-radius:999px;padding:.1rem .5rem;color:var(--soft)}
 </style>
 </head>
@@ -47,6 +54,18 @@ button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
 </header>
 <main>
   <div id="content" style="display:none">
+    <h2 style="margin-top:0">שידור למעקב החי</h2>
+    <div class="live">
+      <div class="st" id="liveSt">טוען…</div>
+      <div class="row">
+        <input id="srcUrl" type="url" placeholder="https://www.youtube.com/watch?v=…  (אפשר &t=2400 לנקודת התחלה)">
+        <button id="srcSet">הפעל קישור</button>
+        <button id="srcClear">נקה — חזרה לערוץ הכותל</button>
+      </div>
+      <p class="muted" style="margin:.7rem 0 0">הקליטה פועלת רק כשמישהו פתוח באתר — לבחינה פתחו את <a href="/" target="_blank">האתר</a> בלשונית נוספת.
+      הקלטה של ערב קודם מנוגנת בקצב אמיתי. ניקוי הקישור מחזיר את המעקב לערוץ הכותל (שידור סליחות חי אם יש, אחרת מצלמת הרחבה).</p>
+    </div>
+
     <div class="grid" id="kpis"></div>
 
     <h2>כניסות ב־24 השעות האחרונות</h2>
@@ -85,6 +104,7 @@ async function load(){
     $('#storeTag').textContent = 'אחסון: '+d.storage;
     $('#upd').textContent = 'עודכן '+new Date(d.now).toLocaleTimeString('he-IL');
     render(d);
+    loadSource();
   }catch(e){ $('#msg').textContent='שגיאת רשת: '+e.message; }
 }
 
@@ -121,6 +141,35 @@ function table(sel,head,rows){
   $(sel).innerHTML='<tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr>'+
     rows.map(r=>`<tr><td>${r.k}</td><td>${r.v}</td></tr>`).join('');
 }
+const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MODES = {off:'כבוי', starting:'מתחבר', listening:'קולט ומתמלל', manual:'סנכרון גבאי ידני'};
+const KINDS = {override:'קישור מלוח הבקרה', channel:'שידור סליחות חי בערוץ הכותל', camera:'מצלמת רחבת הכותל (אין כרגע סליחות חיות)'};
+
+async function loadSource(){
+  if(!token) return;
+  const r = await fetch('/api/live/source',{headers:{'x-admin-token':token}});
+  if(r.ok) renderSource(await r.json());
+}
+function renderSource(d){
+  const f = d.feeder;
+  const lines = [
+    `<b>מקור שנבחר:</b> ${d.override ? `<span dir="ltr">${esc(d.override)}</span>` : 'ערוץ הכותל (אוטומטי)'}`,
+    `<b>מצב באתר:</b> ${MODES[d.mode]||esc(d.mode)} · ${d.listeners} מאזינים${d.section ? ' · עכשיו ב: '+esc(d.section) : ''}`,
+    f ? `<b>המזין קולט:</b> ${f.url ? KINDS[f.kind]||'' : '—'}${f.title ? ' — '+esc(f.title) : ''}${f.url ? ` · <a href="${esc(f.url)}" target="_blank" dir="ltr">${esc(f.url.replace(/^https?:\/\/(www\.)?/,'').slice(0,60))}</a>` : ''}${f.ingesting ? '' : ' <span class="muted">(ממתין למאזינים)</span>'}`
+      : `<span class="warn"><b>המזין אינו מחובר</b> — אין פעימות מהמחשב של גרוק בוט ב-75 השניות האחרונות.</span>`
+  ];
+  if (f && d.override && f.url && f.url !== d.override) lines.push('<span class="muted">המזין יעבור לקישור החדש בתוך כ-10 שניות…</span>');
+  $('#liveSt').innerHTML = lines.join('<br>');
+}
+async function setSource(url){
+  const r = await fetch('/api/live/source',{method:'POST',headers:{'x-admin-token':token,'content-type':'application/json'},body:JSON.stringify({url})});
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) { $('#liveSt').innerHTML = `<span class="warn">${esc(d.error||'שגיאה '+r.status)}</span>`; return; }
+  renderSource(d);
+}
+$('#srcSet').onclick=()=>{ const u=$('#srcUrl').value.trim(); if(u) setSource(u); };
+$('#srcClear').onclick=()=>{ $('#srcUrl').value=''; setSource(''); };
+
 $('#go').onclick=()=>{token=$('#token').value.trim();load();};
 $('#token').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
 load(); setInterval(load,10000);

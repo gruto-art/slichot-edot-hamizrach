@@ -3,6 +3,8 @@
    חסומה, ולאתר החי נשלחים רק מיקומים. זה אותו מנוע בדיוק (server/kotel.js).
 
    הקליטה פועלת רק כשיש באתר מאזינים, כמו בשרת עצמו — אחרת התמלול עולה כסף לחינם.
+   המקור: קישור שהוזן בלוח הבקרה (/admin) אם יש; אחרת שידור סליחות חי בערוץ הכותל;
+   אחרת מצלמת הרחבה.
 
    שימוש:
      FEED_TARGET=https://slichot.onrender.com ADMIN_TOKEN=… \
@@ -54,7 +56,14 @@ let wasListening = false;
 async function beat() {
   const ingesting = engine.state.mode === 'listening';
   try {
-    const { listeners } = await post({ ingesting });
+    const { listeners, override = '' } = await post({ ingesting, source: engine.sourceInfo() });
+    // קישור מלוח הבקרה (או ניקויו — חזרה לערוץ הכותל)
+    if (override !== engine.override) {
+      try {
+        engine.setSource(override);
+        log(override ? `מקור מלוח הבקרה: ${override}` : 'הקישור נוקה — חוזר לערוץ הכותל');
+      } catch (e) { log('קישור לא תקין מלוח הבקרה:', e.message); }
+    }
     if (listeners > 0 && !engine.clients.has(proxy)) {
       log(`${listeners} מאזינים באתר — מתחיל לקלוט`);
       engine.addClient(proxy);

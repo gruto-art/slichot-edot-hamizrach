@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { KotelEngine, kotelConfig, resolveFfmpeg } from './kotel.js';
+import { KotelEngine, kotelConfig, resolveFfmpeg, cleanSourceUrl } from './kotel.js';
 import { execFileSync } from 'node:child_process';
 import { recordHit, recordPulse, recordEvent, stats, liveFeed } from './analytics.js';
 
@@ -18,6 +18,10 @@ app.use(express.json({ limit: '32kb' }));
 const doc = JSON.parse(fs.readFileSync(path.join(root, 'data/slichot.json'), 'utf8'));
 const words = JSON.parse(fs.readFileSync(path.join(root, 'data/index_words.json'), 'utf8'));
 const kotel = new KotelEngine(doc, words);
+
+// קישור שידור מלוח הבקרה נשמר בדיסק, כדי שלא ייעלם כשהשירות מתעורר מחדש
+const SOURCE_FILE = path.join(process.env.DATA_DIR || path.join(root, 'data'), 'live-source.json');
+try { kotel.override = cleanSourceUrl(JSON.parse(fs.readFileSync(SOURCE_FILE, 'utf8')).url); } catch {}
 
 /* ---------- אבטחה בסיסית + קאשינג ---------- */
 app.use((req, res, next) => {
@@ -73,8 +77,40 @@ app.post('/api/live/remote', requireAdmin, (req, res) => {
   const confidence = Number(req.body?.confidence) || 0;
   if (Number.isFinite(word) && word >= 0 && word < doc.wordCount) kotel.remotePosition(word, confidence);
   else kotel.remoteBeat(!!req.body?.ingesting);
-  res.json({ ok: true, listeners: kotel.listeners, mode: kotel.state.mode });
+  const src = req.body?.source;
+  if (src && typeof src.url === 'string') {
+    kotel.remoteSource = { url: src.url.slice(0, 500), kind: String(src.kind || ''), title: String(src.title || '').slice(0, 200), at: Date.now() };
+  }
+  // override: הקישור מלוח הבקרה ('' = ערוץ הכותל). המזין עובר אליו בפעימה הבאה.
+  res.json({ ok: true, listeners: kotel.listeners, mode: kotel.state.mode, override: kotel.override });
 });
+
+// מקור השידור: קישור לבחינה (שידור חי או הקלטה, אפשר עם ?t=שניות), או ריק לחזרה לערוץ הכותל
+app.get('/api/live/source', requireAdmin, (_req, res) => res.json(sourceStatus()));
+app.post('/api/live/source', requireAdmin, (req, res) => {
+  try {
+    kotel.setSource(req.body?.url || '');
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  try {
+    fs.mkdirSync(path.dirname(SOURCE_FILE), { recursive: true });
+    fs.writeFileSync(SOURCE_FILE, JSON.stringify({ url: kotel.override }));
+  } catch (e) { console.warn('[source] לא נשמר:', e.message); }
+  res.json(sourceStatus());
+});
+
+function sourceStatus() {
+  const feederAlive = kotel.remoteAlive();
+  return {
+    override: kotel.override,
+    mode: kotel.state.mode,
+    listeners: kotel.listeners,
+    section: kotel.state.section,
+    word: kotel.state.word,
+    feeder: feederAlive ? { ...kotel.remoteSource, ingesting: kotel.remote.ingesting, lastBeat: kotel.remote.at } : null
+  };
+}
 
 app.post('/api/live/control', requireAdmin, (req, res) => {
   const a = req.body?.action;

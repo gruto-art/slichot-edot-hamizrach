@@ -22,7 +22,12 @@ export async function resolveFfmpeg() {
 }
 
 const CFG = {
+  // מצלמת רחבת הכותל (24/7). הסליחות עצמן משודרות בערוץ כשידור חי נפרד, ולכן
+  // המנוע מחפש קודם שידור חי ששמו "סליחות" בערוץ (channelUrl), ורק אחריו נופל למצלמה.
   streamUrl: process.env.KOTEL_STREAM_URL || 'https://www.youtube.com/watch?v=LMHUcDktP-w',
+  channelUrl: process.env.KOTEL_CHANNEL_URL ?? 'https://www.youtube.com/channel/UCvcdHbNAQvbe2GuIDLhlwaw/streams',
+  channelMatch: new RegExp(process.env.KOTEL_CHANNEL_MATCH || 'סליחות'),
+  channelCheckMs: Number(process.env.KOTEL_CHANNEL_CHECK_MS || 180000),
   // 91 = 144p עם אודיו (~290kbps) — הזול ביותר לקליטה; נופל חזרה לאודיו בלבד אם קיים
   ytFormat: process.env.KOTEL_YTDLP_FORMAT || '91/bestaudio*/worst',
   // כתובת HLS ישירה נקלטת בלי yt-dlp כלל (חוסך את בדיקת הבוטים של יוטיוב)
@@ -57,6 +62,23 @@ const YT_STRATEGIES = [
   { name: 'web_safari', args: ['--extractor-args', 'youtube:player_client=web_safari'] }
 ];
 
+/** קישור מלוח הבקרה: רק http(s), כדי שלא יתפרש כדגל של yt-dlp או כקובץ מקומי */
+export function cleanSourceUrl(url) {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 500) throw new Error('קישור לא תקין');
+  return u;
+}
+
+/** נקודת התחלה מתוך הקישור (?t=2400 או t=1h2m3s) — לבחינה על הקלטה של ערב קודם */
+function startFromUrl(url) {
+  const m = /[?&#]t=([0-9hms]+)/.exec(url);
+  if (!m) return 0;
+  if (/^\d+s?$/.test(m[1])) return parseInt(m[1], 10);
+  const [, h = 0, mi = 0, se = 0] = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(m[1]) || [];
+  return (+h) * 3600 + (+mi) * 60 + (+se);
+}
+
 const isDirectStream = url => /\.m3u8(\?|$)|\.mpd(\?|$)|^rtmps?:/i.test(url);
 // קובץ מקומי (לבדיקות): נקרא בקצב אמיתי, כאילו היה שידור
 const isLocalFile = url => !/^[a-z]+:/i.test(url) && fs.existsSync(url);
@@ -89,7 +111,11 @@ export class KotelEngine {
   constructor(doc, words, { onPosition } = {}) {
     this.doc = doc;
     this.onPosition = onPosition;
-    this.remote = { at: 0, ingesting: false };
+    this.remote = { at: 0, ingesting: false, url: '' };
+    this.override = '';   // קישור שהוזן בלוח הבקרה — גובר על הכול
+    this.autoUrl = '';    // שידור סליחות חי שנמצא בערוץ הכותל
+    this.autoTitle = '';
+    this.channelCheckedAt = 0;
     this.aligner = new Aligner(words);
     this.tracker = new Tracker(this.aligner);
     setBiasText(doc);
@@ -105,6 +131,87 @@ export class KotelEngine {
     this.cookiesPath = prepareCookies(CFG.ytCookies);
     resolveFfmpeg().then(p => { this.ffmpegPath = p; });
     setInterval(() => this._tick(), 1000).unref?.();
+  }
+
+  /* ---------- מקור השידור ---------- */
+  get streamUrl() { return this.override || this.autoUrl || CFG.streamUrl; }
+
+  sourceInfo() {
+    return {
+      url: this.streamUrl,
+      kind: this.override ? 'override' : this.autoUrl ? 'channel' : 'camera',
+      title: this.override ? '' : this.autoTitle
+    };
+  }
+
+  /** קישור מלוח הבקרה ('' = חזרה לערוץ הכותל). מחזיר true אם המקור השתנה. */
+  setSource(url) {
+    url = cleanSourceUrl(url);
+    if (url === this.override) return false;
+    this.override = url;
+    this._switchSource();
+    return true;
+  }
+
+  /** מעבר מקור: המיקום הקודם אינו תקף לשידור אחר */
+  _switchSource() {
+    const hadIngest = !!(this.proc.ffmpeg || this.pendingStart);
+    this.stopIngest();
+    this.sttWord = -1;
+    this.pace = [];
+    this.tracker.reset();
+    if (this.state.mode !== 'manual') {
+      this.state.word = -1;
+      this.state.section = '';
+      if (hadIngest || this.clients.size) {
+        this.state.mode = 'off';
+        this.retryAfter = 0;
+        this.failures = 0;
+        this.start('source');
+      }
+    }
+    this.broadcast('status', this._statusPayload());
+  }
+
+  /** קובץ מקומי או HLS ישיר ב-KOTEL_STREAM_URL (בדיקות) — לא מחליפים אותו בשידור מהערוץ */
+  _pinned() { return isLocalFile(CFG.streamUrl) || isDirectStream(CFG.streamUrl); }
+
+  /** מחפש בערוץ הכותל שידור חי של סליחות. זול (~1 שנייה, בלי הורדה). */
+  findChannelLive() {
+    if (!CFG.channelUrl) return Promise.resolve(null);
+    return new Promise(resolve => {
+      const args = ['--no-warnings', '--flat-playlist', '--playlist-end', '10',
+        '--print', '%(id)s\t%(live_status)s\t%(title)s'];
+      if (this.cookiesPath) args.push('--cookies', this.cookiesPath);
+      const p = spawn('yt-dlp', [...args, '--', CFG.channelUrl], { stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      p.stdout.on('data', d => { out += d; });
+      p.on('error', () => resolve(null));
+      const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 30000);
+      p.on('exit', code => {
+        clearTimeout(timer);
+        if (code !== 0 && !out) return resolve(null);
+        for (const line of out.split('\n')) {
+          const [id, status, ...t] = line.split('\t');
+          const title = t.join(' ');
+          if (id && status === 'is_live' && CFG.channelMatch.test(title))
+            return resolve({ url: 'https://www.youtube.com/watch?v=' + id, title });
+        }
+        resolve({ url: '', title: '' });
+      });
+    });
+  }
+
+  /** מעדכן את השידור מהערוץ; אם השתנה בזמן קליטה — עובר אליו */
+  async _refreshChannel() {
+    this.channelCheckedAt = Date.now();
+    const found = await this.findChannelLive();
+    if (!found) return false;   // הבדיקה נכשלה — נשארים עם מה שיש
+    const changed = found.url !== this.autoUrl;
+    this.autoUrl = found.url;
+    this.autoTitle = found.title;
+    if (changed) console.log('[kotel] מקור מהערוץ:', found.url ? `${found.title} (${found.url})` : 'אין סליחות חיות — מצלמת הרחבה');
+    return changed;
   }
 
   _buildSectionMap() {
@@ -150,7 +257,7 @@ export class KotelEngine {
   }
 
   _idleMessage() {
-    if (!CFG.streamUrl) return 'המעקב החי מהכותל עדיין לא מחובר לשידור. אפשר לקרוא בקצב שלך.';
+    if (!this.streamUrl) return 'המעקב החי מהכותל עדיין לא מחובר לשידור. אפשר לקרוא בקצב שלך.';
     if (!this._hasKey()) return 'המעקב החי ממתין להגדרת מנוע התמלול. אפשר לקרוא בקצב שלך.';
     return 'אין כרגע שידור סליחות חי מהכותל. המעקב יופעל אוטומטית כשהשידור יתחיל.';
   }
@@ -224,7 +331,7 @@ export class KotelEngine {
   start(reason = 'manual') {
     if (this.state.mode === 'manual') return;
     if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting);
-    if (!CFG.streamUrl || !this._hasKey()) {
+    if (!this.streamUrl || !this._hasKey()) {
       this.state.mode = 'off';
       this.broadcast('status', { state: 'idle', message: this._idleMessage() });
       return;
@@ -262,19 +369,28 @@ export class KotelEngine {
     const dir = this.tmpDir;
     for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
 
+    // שלב 0: בלי קישור מלוח הבקרה — בודקים אם יש בערוץ שידור סליחות חי
+    if (!this.override && !this._pinned()) await this._refreshChannel();
+    if (!this.pendingStart) return;
+    const src = this.streamUrl;
+
     // שלב א: מקור ישיר (m3u8/mpd) נקלט כמו שהוא; אחרת yt-dlp מחלץ את הכתובת
-    let mediaUrl;
-    const local = isLocalFile(CFG.streamUrl);
-    if (local || isDirectStream(CFG.streamUrl)) {
-      mediaUrl = CFG.streamUrl;
+    let mediaUrl, isLive = true;
+    const local = isLocalFile(src) && !this.override;
+    if (local || isDirectStream(src)) {
+      mediaUrl = src;
+      isLive = !local;
     } else {
       try {
-        mediaUrl = await this._resolveMediaUrl();
+        ({ url: mediaUrl, isLive } = await this._resolveMediaUrl(src));
       } catch (e) {
         return this._fail('yt-dlp: ' + e.message);
       }
     }
-    if (!this.pendingStart) return;   // בוטל בינתיים
+    if (!this.pendingStart || src !== this.streamUrl) return;   // בוטל או שהמקור הוחלף בינתיים
+    // הקלטה (לא שידור חי) מנוגנת בקצב אמיתי, מנקודת ההתחלה שבקישור
+    const startSec = this.override ? startFromUrl(src) : CFG.startSec;
+    const realtime = local || CFG.realtime || !isLive;
 
     // שלב ב: ffmpeg קולט את ה-HLS ישירות וחותך לקטעי WAV
     const headers = CFG.streamReferer ? ['-headers', `Referer: ${CFG.streamReferer}\r\n`] : [];
@@ -282,8 +398,8 @@ export class KotelEngine {
       '-hide_banner', '-loglevel', 'error',
       ...(local ? [] : ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']),
       ...headers,
-      ...(local || CFG.realtime ? ['-re'] : []),
-      ...(CFG.startSec ? ['-ss', String(CFG.startSec)] : []),
+      ...(realtime ? ['-re'] : []),
+      ...(startSec ? ['-ss', String(startSec)] : []),
       '-i', mediaUrl,
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
       '-segment_time', String(CFG.segSec), '-reset_timestamps', '1',
@@ -301,6 +417,8 @@ export class KotelEngine {
     });
 
     this.proc.ffmpeg = ffmpeg;
+    this.source = { url: src, live: isLive, startSec, at: Date.now() };
+    console.log(`[kotel] קולט: ${src}${isLive ? '' : ' (הקלטה' + (startSec ? `, מ-${startSec} שנ׳` : '') + ')'}`);
     this.failures = 0;
     this.retryAfter = 0;
     this.state.mode = 'listening';
@@ -308,16 +426,16 @@ export class KotelEngine {
     this._watchSegments();
   }
 
-  async _resolveMediaUrl() {
+  async _resolveMediaUrl(src) {
     const errors = [];
     for (const strat of YT_STRATEGIES) {
       try {
-        const url = await this._tryYtDlp(strat);
+        const r = await this._tryYtDlp(strat, src);
         if (this.ytStrategy !== strat.name) {
           console.log(`[kotel] yt-dlp הצליח עם ${strat.name}`);
           this.ytStrategy = strat.name;
         }
-        return url;
+        return r;
       } catch (e) {
         errors.push(`${strat.name}: ${e.message}`);
         if (!this.pendingStart) break;
@@ -326,11 +444,11 @@ export class KotelEngine {
     throw new Error(errors.join(' ;; ').slice(0, 600));
   }
 
-  _tryYtDlp(strat) {
+  _tryYtDlp(strat, src) {
     return new Promise((resolve, reject) => {
       const args = ['--no-warnings', '--socket-timeout', '20', ...strat.args];
       if (this.cookiesPath) args.push('--cookies', this.cookiesPath);
-      args.push('-f', CFG.ytFormat, '-g', CFG.streamUrl);
+      args.push('-f', CFG.ytFormat, '--print', 'is_live', '-g', '--', src);
       const p = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '', err = '';
       p.stdout.on('data', d => { out += d; });
@@ -339,8 +457,10 @@ export class KotelEngine {
       const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 35000);
       p.on('exit', code => {
         clearTimeout(timer);
-        const url = out.trim().split('\n').filter(Boolean).pop();
-        if (code === 0 && url && /^https?:/.test(url)) return resolve(url);
+        const lines = out.trim().split('\n').filter(Boolean);
+        const url = lines.pop();
+        // is_live מודפס לפני הכתובת; ערך לא ידוע נחשב שידור חי (כך היה עד כה)
+        if (code === 0 && url && /^https?:/.test(url)) return resolve({ url, isLive: lines[0] !== 'False' });
         const detail = [err.trim(), out.trim()].filter(Boolean).join(' | ')
           .replace(/\s+/g, ' ').slice(0, 160);
         reject(new Error(detail || 'exit ' + code));
@@ -408,6 +528,11 @@ export class KotelEngine {
       this.stopIngest();
       this.state.mode = 'off';
       return;
+    }
+    // בזמן קליטה מהערוץ: בודקים מדי פעם אם התחיל (או נגמר) שידור סליחות חי
+    if (this.proc.ffmpeg && !this.override && CFG.channelUrl && !this._pinned()
+        && now - this.channelCheckedAt > CFG.channelCheckMs) {
+      this._refreshChannel().then(changed => { if (changed && !this.override) this._switchSource(); });
     }
     // המזין המרוחק השתתק: לא ממשיכים לקדם את הדף על סמך ניחוש
     if (this.state.mode === 'listening' && !this.proc.ffmpeg && !this.remoteAlive() && this.remote.at) {
