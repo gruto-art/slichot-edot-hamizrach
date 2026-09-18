@@ -166,6 +166,7 @@ export class KotelEngine {
     url = cleanSourceUrl(url);
     if (url === this.override) return false;
     this.override = url;
+    this.endedUrl = '';
     this._switchSource();
     return true;
   }
@@ -273,11 +274,14 @@ export class KotelEngine {
     return { state: s.mode };
   }
 
+  _ended() { return !!this.override && this.endedUrl === this.override; }
+
   /** מחפשים שידור בערוץ (ולא קישור מלוח הבקרה או מקור בדיקה קבוע) */
   _auto() { return !this.override && !this._pinned(); }
 
   _idleMessage() {
     if (this.remoteAlive() && this.remote.message) return this.remote.message;
+    if (this._ended()) return 'הקלטת הבדיקה הסתיימה. אפשר לקרוא בקצב שלך.';
     if (!this._hasKey()) return 'המעקב החי ממתין להגדרת מנוע התמלול. אפשר לקרוא בקצב שלך.';
     if (this._auto() && !inWindow()) {
       const [a, b] = CFG.window.split('-');
@@ -357,7 +361,7 @@ export class KotelEngine {
   start(reason = 'manual') {
     if (this.state.mode === 'manual') return;
     if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting, this.remote.message);
-    if (!this._hasKey() || (this._auto() && !inWindow())) {
+    if (!this._hasKey() || (this._auto() && !inWindow()) || this._ended()) {
       this.state.mode = 'off';
       this.broadcast('status', { state: 'idle', message: this._idleMessage() });
       return;
@@ -445,6 +449,13 @@ export class KotelEngine {
       if (this.proc.ffmpeg !== ffmpeg) return;
       this.proc.ffmpeg = null;
       console.warn('[kotel] ffmpeg exited', code);
+      // הקלטה שהסתיימה — לא מנגנים אותה שוב (זה היה עולה כסף בלולאה)
+      if (code === 0 && this.source && !this.source.live && this.source.url === this.override) {
+        this.endedUrl = this.override;
+        this.state.mode = 'off';
+        this.broadcast('status', { state: 'idle', message: this._idleMessage() });
+        return;
+      }
       // כתובות HLS פגות תוקף — מרעננים ומתחברים מחדש כל עוד יש מאזינים
       if (this.clients.size) setTimeout(() => { this.state.mode = 'off'; this.start('reconnect'); }, 5000);
     });
