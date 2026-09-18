@@ -49,6 +49,12 @@ const YT_STRATEGIES = [
 ];
 
 const isDirectStream = url => /\.m3u8(\?|$)|\.mpd(\?|$)|^rtmps?:/i.test(url);
+// קובץ מקומי (לבדיקות): נקרא בקצב אמיתי, כאילו היה שידור
+const isLocalFile = url => !/^[a-z]+:/i.test(url) && fs.existsSync(url);
+
+// מזין מרוחק: מכונה שיוטיוב אינה חוסמת קולטת ומתמללת, ושולחת לכאן רק מיקומים.
+// כל עוד הוא שולח פעימות, השרת אינו מנסה לקלוט בעצמו.
+const REMOTE_TTL_MS = 75000;
 
 // yt-dlp כותב חזרה לקובץ העוגיות אחרי כל ריצה, וקבצי סוד ב-Render הם לקריאה בלבד.
 // לכן מעתיקים לעותק זמני בר-כתיבה, ומרעננים אותו בכל עלייה של השירות.
@@ -71,8 +77,10 @@ function prepareCookies(src) {
 }
 
 export class KotelEngine {
-  constructor(doc, words) {
+  constructor(doc, words, { onPosition } = {}) {
     this.doc = doc;
+    this.onPosition = onPosition;
+    this.remote = { at: 0, ingesting: false };
     this.aligner = new Aligner(words);
     this.clients = new Set();
     this.state = { mode: 'off', word: -1, confidence: 0, section: '', updatedAt: 0, source: '' };
@@ -164,6 +172,7 @@ export class KotelEngine {
     if (source === 'stt') {
       this.pace.push({ word, at: this.state.updatedAt });
       if (this.pace.length > 8) this.pace.shift();
+      this.onPosition?.(word, confidence);
     } else if (source === 'manual') {
       this.pace = [];
     }
@@ -177,9 +186,30 @@ export class KotelEngine {
     this.setPosition(word, 1, 'manual');
   }
 
+  /* ---------- מזין מרוחק ---------- */
+  remoteAlive() { return Date.now() - this.remote.at < REMOTE_TTL_MS; }
+
+  remoteBeat(ingesting) {
+    this.remote = { at: Date.now(), ingesting: !!ingesting };
+    if (this.state.mode === 'manual') return;
+    this.stopIngest();   // הקליטה המקומית נחסמת ממילא; המזין מחליף אותה
+    const mode = ingesting ? 'listening' : (this.clients.size ? 'starting' : 'off');
+    if (mode !== this.state.mode) {
+      this.state.mode = mode;
+      this.broadcast('status', this._statusPayload());
+    }
+  }
+
+  remotePosition(word, confidence) {
+    if (this.state.mode === 'manual') return;   // סנכרון הגבאי גובר
+    this.remoteBeat(true);
+    this.setPosition(word, confidence, 'stt');
+  }
+
   /* ---------- הפעלה / כיבוי ---------- */
   start(reason = 'manual') {
     if (this.state.mode === 'manual') return;
+    if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting);
     if (!CFG.streamUrl || !this._hasKey()) {
       this.state.mode = 'off';
       this.broadcast('status', { state: 'idle', message: this._idleMessage() });
@@ -219,7 +249,8 @@ export class KotelEngine {
 
     // שלב א: מקור ישיר (m3u8/mpd) נקלט כמו שהוא; אחרת yt-dlp מחלץ את הכתובת
     let mediaUrl;
-    if (isDirectStream(CFG.streamUrl)) {
+    const local = isLocalFile(CFG.streamUrl);
+    if (local || isDirectStream(CFG.streamUrl)) {
       mediaUrl = CFG.streamUrl;
     } else {
       try {
@@ -236,6 +267,7 @@ export class KotelEngine {
       '-hide_banner', '-loglevel', 'error',
       '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
       ...headers,
+      ...(local ? ['-re'] : []),
       '-i', mediaUrl,
       '-vn', '-ac', '1', '-ar', '16000', '-f', 'segment',
       '-segment_time', String(CFG.segSec), '-reset_timestamps', '1',
@@ -361,10 +393,17 @@ export class KotelEngine {
   _tick() {
     const now = Date.now();
     if (this.clients.size) this.lastClientAt = now;
-    else if (this.proc.ytdlp && now - this.lastClientAt > CFG.idleStopMs) {
+    else if ((this.proc.ytdlp || this.proc.ffmpeg) && now - this.lastClientAt > CFG.idleStopMs) {
       console.log('[kotel] אין מאזינים — עוצר קליטה');
       this.stopIngest();
       this.state.mode = 'off';
+      return;
+    }
+    // המזין המרוחק השתתק: לא ממשיכים לקדם את הדף על סמך ניחוש
+    if (this.state.mode === 'listening' && !this.proc.ffmpeg && !this.remoteAlive() && this.remote.at) {
+      this.remote.at = 0;
+      this.state.mode = 'off';
+      this.broadcast('status', { state: 'idle', message: this._idleMessage() });
       return;
     }
     if (this.state.mode !== 'listening' || this.state.word < 0) return;

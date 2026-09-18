@@ -66,6 +66,16 @@ app.post('/api/live/manual', requireAdmin, (req, res) => {
   res.json({ ok: true, word, section: kotel.state.section });
 });
 
+// מזין מרוחק (scripts/kotel_feeder.mjs): פעימה, ומיקום כשזוהה. מחזיר את מספר המאזינים,
+// כדי שהמזין יקלוט (ויוציא כסף על תמלול) רק כשמישהו באמת עוקב.
+app.post('/api/live/remote', requireAdmin, (req, res) => {
+  const word = Number(req.body?.word);
+  const confidence = Number(req.body?.confidence) || 0;
+  if (Number.isFinite(word) && word >= 0 && word < doc.wordCount) kotel.remotePosition(word, confidence);
+  else kotel.remoteBeat(!!req.body?.ingesting);
+  res.json({ ok: true, listeners: kotel.listeners, mode: kotel.state.mode });
+});
+
 app.post('/api/live/control', requireAdmin, (req, res) => {
   const a = req.body?.action;
   if (a === 'start') { kotel.state.mode = 'off'; kotel.start('admin'); }
