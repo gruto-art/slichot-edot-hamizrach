@@ -76,7 +76,7 @@ app.post('/api/live/remote', requireAdmin, (req, res) => {
   const word = Number(req.body?.word);
   const confidence = Number(req.body?.confidence) || 0;
   if (Number.isFinite(word) && word >= 0 && word < doc.wordCount) kotel.remotePosition(word, confidence);
-  else kotel.remoteBeat(!!req.body?.ingesting);
+  else kotel.remoteBeat(!!req.body?.ingesting, req.body?.idle);
   const src = req.body?.source;
   if (src && typeof src.url === 'string') {
     kotel.remoteSource = { url: src.url.slice(0, 500), kind: String(src.kind || ''), title: String(src.title || '').slice(0, 200), at: Date.now() };
@@ -108,7 +108,7 @@ function sourceStatus() {
     listeners: kotel.listeners,
     section: kotel.state.section,
     word: kotel.state.word,
-    feeder: feederAlive ? { ...kotel.remoteSource, ingesting: kotel.remote.ingesting, lastBeat: kotel.remote.at } : null
+    feeder: feederAlive ? { ...kotel.remoteSource, ingesting: kotel.remote.ingesting, idle: kotel.remote.message, lastBeat: kotel.remote.at } : null
   };
 }
 

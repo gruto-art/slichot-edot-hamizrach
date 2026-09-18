@@ -143,7 +143,7 @@ function table(sel,head,rows){
 }
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const MODES = {off:'כבוי', starting:'מתחבר', listening:'קולט ומתמלל', manual:'סנכרון גבאי ידני'};
-const KINDS = {override:'קישור מלוח הבקרה', channel:'שידור סליחות חי בערוץ הכותל', camera:'מצלמת רחבת הכותל (אין כרגע סליחות חיות)'};
+const KINDS = {override:'קישור מלוח הבקרה', channel:'שידור סליחות חי בערוץ הכותל', camera:'מצלמת רחבת הכותל', none:'—'};
 
 async function loadSource(){
   if(!token) return;
@@ -155,7 +155,7 @@ function renderSource(d){
   const lines = [
     `<b>מקור שנבחר:</b> ${d.override ? `<span dir="ltr">${esc(d.override)}</span>` : 'ערוץ הכותל (אוטומטי)'}`,
     `<b>מצב באתר:</b> ${MODES[d.mode]||esc(d.mode)} · ${d.listeners} מאזינים${d.section ? ' · עכשיו ב: '+esc(d.section) : ''}`,
-    f ? `<b>המזין קולט:</b> ${f.url ? KINDS[f.kind]||'' : '—'}${f.title ? ' — '+esc(f.title) : ''}${f.url ? ` · <a href="${esc(f.url)}" target="_blank" dir="ltr">${esc(f.url.replace(/^https?:\/\/(www\.)?/,'').slice(0,60))}</a>` : ''}${f.ingesting ? '' : ' <span class="muted">(ממתין למאזינים)</span>'}`
+    f ? `<b>המזין קולט:</b> ${f.url ? KINDS[f.kind]||'' : '—'}${f.title ? ' — '+esc(f.title) : ''}${f.url ? ` · <a href="${esc(f.url)}" target="_blank" dir="ltr">${esc(f.url.replace(/^https?:\/\/(www\.)?/,'').slice(0,60))}</a>` : ''}${f.ingesting ? '' : ` <span class="muted">(${esc(f.idle || 'לא קולט — ממתין למאזינים')})</span>`}`
       : `<span class="warn"><b>המזין אינו מחובר</b> — אין פעימות מהמחשב של גרוק בוט ב-75 השניות האחרונות.</span>`
   ];
   if (f && d.override && f.url && f.url !== d.override) lines.push('<span class="muted">המזין יעבור לקישור החדש בתוך כ-10 שניות…</span>');

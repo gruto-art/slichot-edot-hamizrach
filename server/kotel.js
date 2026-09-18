@@ -28,6 +28,11 @@ const CFG = {
   channelUrl: process.env.KOTEL_CHANNEL_URL ?? 'https://www.youtube.com/channel/UCvcdHbNAQvbe2GuIDLhlwaw/streams',
   channelMatch: new RegExp(process.env.KOTEL_CHANNEL_MATCH || 'סליחות'),
   channelCheckMs: Number(process.env.KOTEL_CHANNEL_CHECK_MS || 180000),
+  // שעות הסליחות (שעון ישראל): רק בהן מחפשים שידור בערוץ ומתחילים לקלוט. שידור
+  // שהתחיל בתוך החלון נקלט עד סופו. קישור מלוח הבקרה עוקף את החלון.
+  window: process.env.KOTEL_WINDOW ?? '00:15-02:00',
+  // המצלמה הקבועה אינה הסליחות, ותמלולה עולה כסף לחינם — רק אם מבקשים במפורש
+  cameraFallback: process.env.KOTEL_CAMERA_FALLBACK === '1',
   // 91 = 144p עם אודיו (~290kbps) — הזול ביותר לקליטה; נופל חזרה לאודיו בלבד אם קיים
   ytFormat: process.env.KOTEL_YTDLP_FORMAT || '91/bestaudio*/worst',
   // כתובת HLS ישירה נקלטת בלי yt-dlp כלל (חוסך את בדיקת הבוטים של יוטיוב)
@@ -77,6 +82,16 @@ function startFromUrl(url) {
   if (/^\d+s?$/.test(m[1])) return parseInt(m[1], 10);
   const [, h = 0, mi = 0, se = 0] = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(m[1]) || [];
   return (+h) * 3600 + (+mi) * 60 + (+se);
+}
+
+/** האם עכשיו בחלון שעות הסליחות (שעון ישראל). חלון ריק = תמיד. */
+export function inWindow(now = new Date(), win = CFG.window) {
+  const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(win || '');
+  if (!m) return true;
+  const from = +m[1] * 60 + +m[2], to = +m[3] * 60 + +m[4];
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const mins = +parts.find(p => p.type === 'hour').value * 60 + +parts.find(p => p.type === 'minute').value;
+  return from <= to ? mins >= from && mins < to : mins >= from || mins < to;
 }
 
 const isDirectStream = url => /\.m3u8(\?|$)|\.mpd(\?|$)|^rtmps?:/i.test(url);
@@ -134,12 +149,14 @@ export class KotelEngine {
   }
 
   /* ---------- מקור השידור ---------- */
-  get streamUrl() { return this.override || this.autoUrl || CFG.streamUrl; }
+  get streamUrl() {
+    return this.override || this.autoUrl || (this._pinned() || CFG.cameraFallback ? CFG.streamUrl : '');
+  }
 
   sourceInfo() {
     return {
       url: this.streamUrl,
-      kind: this.override ? 'override' : this.autoUrl ? 'channel' : 'camera',
+      kind: this.override ? 'override' : this.autoUrl ? 'channel' : this.streamUrl ? 'camera' : 'none',
       title: this.override ? '' : this.autoTitle
     };
   }
@@ -256,9 +273,16 @@ export class KotelEngine {
     return { state: s.mode };
   }
 
+  /** מחפשים שידור בערוץ (ולא קישור מלוח הבקרה או מקור בדיקה קבוע) */
+  _auto() { return !this.override && !this._pinned(); }
+
   _idleMessage() {
-    if (!this.streamUrl) return 'המעקב החי מהכותל עדיין לא מחובר לשידור. אפשר לקרוא בקצב שלך.';
+    if (this.remoteAlive() && this.remote.message) return this.remote.message;
     if (!this._hasKey()) return 'המעקב החי ממתין להגדרת מנוע התמלול. אפשר לקרוא בקצב שלך.';
+    if (this._auto() && !inWindow()) {
+      const [a, b] = CFG.window.split('-');
+      return `המעקב החי מהכותל פועל בזמן אמירת הסליחות, בין ${a} ל-${b}. אפשר לקרוא בקצב שלך.`;
+    }
     return 'אין כרגע שידור סליחות חי מהכותל. המעקב יופעל אוטומטית כשהשידור יתחיל.';
   }
 
@@ -310,12 +334,14 @@ export class KotelEngine {
   /* ---------- מזין מרוחק ---------- */
   remoteAlive() { return Date.now() - this.remote.at < REMOTE_TTL_MS; }
 
-  remoteBeat(ingesting) {
-    this.remote = { at: Date.now(), ingesting: !!ingesting };
+  remoteBeat(ingesting, message = '') {
+    const prevMsg = this.remote.message;
+    this.remote = { at: Date.now(), ingesting: !!ingesting, message: ingesting ? '' : String(message || '').slice(0, 300) };
     if (this.state.mode === 'manual') return;
     this.stopIngest();   // הקליטה המקומית נחסמת ממילא; המזין מחליף אותה
-    const mode = ingesting ? 'listening' : (this.clients.size ? 'starting' : 'off');
-    if (mode !== this.state.mode) {
+    // המזין אינו קולט בכוונה (מחוץ לשעות / אין שידור) — מציגים את הסיבה, לא "מתחבר"
+    const mode = ingesting ? 'listening' : (this.remote.message || !this.clients.size ? 'off' : 'starting');
+    if (mode !== this.state.mode || (mode === 'off' && this.remote.message !== prevMsg)) {
       this.state.mode = mode;
       this.broadcast('status', this._statusPayload());
     }
@@ -330,8 +356,8 @@ export class KotelEngine {
   /* ---------- הפעלה / כיבוי ---------- */
   start(reason = 'manual') {
     if (this.state.mode === 'manual') return;
-    if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting);
-    if (!this.streamUrl || !this._hasKey()) {
+    if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting, this.remote.message);
+    if (!this._hasKey() || (this._auto() && !inWindow())) {
       this.state.mode = 'off';
       this.broadcast('status', { state: 'idle', message: this._idleMessage() });
       return;
@@ -370,9 +396,16 @@ export class KotelEngine {
     for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
 
     // שלב 0: בלי קישור מלוח הבקרה — בודקים אם יש בערוץ שידור סליחות חי
-    if (!this.override && !this._pinned()) await this._refreshChannel();
+    if (this._auto()) await this._refreshChannel();
     if (!this.pendingStart) return;
     const src = this.streamUrl;
+    if (!src) {
+      // אין שידור סליחות חי בערוץ — לא קולטים כלום; בודקים שוב בעוד דקה
+      this.state.mode = 'off';
+      this.nextTry = Date.now() + 60000;
+      this.broadcast('status', { state: 'idle', message: this._idleMessage() });
+      return;
+    }
 
     // שלב א: מקור ישיר (m3u8/mpd) נקלט כמו שהוא; אחרת yt-dlp מחלץ את הכתובת
     let mediaUrl, isLive = true;
@@ -530,7 +563,13 @@ export class KotelEngine {
       return;
     }
     // בזמן קליטה מהערוץ: בודקים מדי פעם אם התחיל (או נגמר) שידור סליחות חי
-    if (this.proc.ffmpeg && !this.override && CFG.channelUrl && !this._pinned()
+    // יש מאזינים אך לא קולטים (מחכים לשידור או לחלון השעות): מנסים שוב כל דקה
+    if (this.clients.size && this.state.mode === 'off' && !this.proc.ffmpeg && !this.pendingStart
+        && !this.remoteAlive() && now >= (this.nextTry || 0) && now >= (this.retryAfter || 0)) {
+      this.nextTry = now + 60000;
+      this.start('poll');
+    }
+    if (this.proc.ffmpeg && this._auto() && CFG.channelUrl
         && now - this.channelCheckedAt > CFG.channelCheckMs) {
       this._refreshChannel().then(changed => { if (changed && !this.override) this._switchSource(); });
     }

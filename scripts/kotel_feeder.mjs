@@ -56,7 +56,11 @@ let wasListening = false;
 async function beat() {
   const ingesting = engine.state.mode === 'listening';
   try {
-    const { listeners, override = '' } = await post({ ingesting, source: engine.sourceInfo() });
+    const { listeners, override = '' } = await post({
+      ingesting, source: engine.sourceInfo(),
+      // לא קולטים בכוונה (מחוץ לשעות הסליחות / אין שידור) — האתר יציג את הסיבה
+      idle: !ingesting && engine.state.mode === 'off' && engine.clients.size ? engine._idleMessage() : ''
+    });
     // קישור מלוח הבקרה (או ניקויו — חזרה לערוץ הכותל)
     if (override !== engine.override) {
       try {
