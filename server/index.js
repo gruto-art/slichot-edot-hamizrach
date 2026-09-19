@@ -246,6 +246,7 @@ app.get('/api/health', (_req, res) => res.json({
 /* ---------- לוח בקרה ---------- */
 app.get('/admin', (_req, res) => res.sendFile(path.join(root, 'public/admin.html')));
 app.get('/sync', (_req, res) => res.sendFile(path.join(root, 'public/sync.html')));
+app.get('/hatarat-kelalot', (_req, res) => res.sendFile(path.join(root, 'public/hatarat-kelalot.html')));
 
 /* ---------- סטטי ---------- */
 app.use(express.static(path.join(root, 'public'), {

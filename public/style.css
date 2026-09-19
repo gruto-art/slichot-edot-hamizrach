@@ -218,3 +218,8 @@ l:last-child{margin-bottom:0}
 .ad-x:hover{background:rgba(0,0,0,.8)}
 .ad.ad-hidden{display:none}
 .ad-top.ad-hidden ~ .toolbar{top:0}
+
+/* דף התרת קללות */
+.hk-note{margin-top:1.1rem;padding:.7rem 1rem;border:1px solid var(--gold-soft);border-radius:10px;background:color-mix(in srgb,var(--gold) 8%,transparent)}
+.prose p.hk-dir{margin-bottom:.6rem}
+a.btn{text-decoration:none}

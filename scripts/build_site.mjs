@@ -150,6 +150,7 @@ ${adBlock('top', ADSENSE_SLOT_TOP)}
     <button class="btn" id="fontMinus" title="הקטנת גופן" aria-label="הקטנת גופן">א−</button>
     <button class="btn" id="fontPlus" title="הגדלת גופן" aria-label="הגדלת גופן">א+</button>
     <span class="spacer"></span>
+    <a class="btn" href="/hatarat-kelalot" title="התרת נדרים וקללות — נוסח עדות המזרח (ללא מעקב חי)">התרת קללות</a>
     <a class="btn btn-wa" id="waShare" href="https://wa.me/?text=${encodeURIComponent('סליחות עדות המזרח — הסדר המלא, מנוקד, עם מעקב חי מהכותל 🙏\n' + SITE + '/?utm_source=whatsapp&utm_medium=share')}" target="_blank" rel="noopener" title="שיתוף האתר בוואטסאפ"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 4 3.5 1.5.6 2.1.7 2.8.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg> שיתוף</a>
     <button class="btn" id="themeBtn" title="מצב יום / לילה" aria-label="החלפת ערכת צבעים">מצב לילה</button>
   </div>
@@ -213,6 +214,74 @@ ${adBlock('bottom', ADSENSE_SLOT_BOTTOM)}
 
 fs.writeFileSync(path.join(root, 'public/index.html'), html);
 
+/* ---------- דף נפרד: התרת נדרים וקללות (ללא מעקב חי) ---------- */
+const hk = JSON.parse(fs.readFileSync(path.join(root, 'data/hatarat_kelalot.json'), 'utf8'));
+const HK_TITLE = 'התרת קללות ונדרים — נוסח עדות המזרח, מנוקד | לערב יום כיפור';
+const HK_DESC = 'נוסח התרת קללות והתרת נדרים של עדות המזרח (ספרדי), מנוקד ומלא: "שמעו נא רבותינו", מסירת מודעה, והתרת קללות מהחיד"א. לערב ראש השנה ולערב יום כיפור.';
+const hkBody = hk.paragraphs.map(p => p.dir
+  ? `<p class="hk-dir"><i class="dir">(${esc(p.t)})</i></p>`
+  : `<p>${esc(p.t)}</p>`).join('\n');
+const hkHtml = `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${esc(HK_TITLE)}</title>
+<meta name="description" content="${esc(HK_DESC)}">
+<meta name="robots" content="index,follow,max-snippet:-1">
+<link rel="canonical" href="${SITE}/hatarat-kelalot">
+<meta property="og:type" content="article">
+<meta property="og:locale" content="he_IL">
+<meta property="og:site_name" content="סליחות עדות המזרח">
+<meta property="og:title" content="${esc(HK_TITLE)}">
+<meta property="og:description" content="${esc(HK_DESC)}">
+<meta property="og:url" content="${SITE}/hatarat-kelalot">
+<meta property="og:image" content="${SITE}/og.png">
+<meta name="theme-color" content="#f7f2e7" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#100e0b" media="(prefers-color-scheme:dark)">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Noto+Serif+Hebrew:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/style.css?v=${ver('style.css')}">
+<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: HK_TITLE, description: HK_DESC, inLanguage: 'he', url: SITE + '/hatarat-kelalot', isPartOf: { '@type': 'WebSite', name: 'סליחות עדות המזרח', url: SITE } })}</script>
+${ga}
+</head>
+<body>
+${adBlock('top', ADSENSE_SLOT_TOP)}
+<nav class="toolbar" aria-label="כלי קריאה">
+  <div class="toolbar-inner">
+    <a class="btn" href="/">→ חזרה לסליחות</a>
+    <button class="btn" id="fontMinus" title="הקטנת גופן" aria-label="הקטנת גופן">א−</button>
+    <button class="btn" id="fontPlus" title="הגדלת גופן" aria-label="הגדלת גופן">א+</button>
+    <span class="spacer"></span>
+    <button class="btn" id="themeBtn" title="מצב יום / לילה" aria-label="החלפת ערכת צבעים">מצב לילה</button>
+  </div>
+</nav>
+<header class="masthead">
+  <p class="kicker">עֶרֶב יוֹם הַכִּפּוּרִים</p>
+  <h1>הַתָּרַת קְלָלוֹת<span class="sub">ונדרים — נוסח עדות המזרח</span></h1>
+  <div class="ornament"><span>✦</span></div>
+  <p class="lede hk-note">⚠ <strong>התרת הקללות אינה כלולה במעקב החי מהכותל</strong> — קוראים אותה בקצב שלכם.</p>
+</header>
+<main>
+<section class="sec">
+<div class="prose">
+${hkBody}
+</div>
+<p style="font-size:.85rem;margin-top:2rem;color:var(--ink-soft)">מקור הטקסט: <a href="${esc(hk.sourceUrl)}" rel="noopener" target="_blank">${esc(hk.source)}</a>. ייתכנו הבדלי נוסח בין קהילות; יש לנהוג כמנהג המקום.</p>
+</section>
+</main>
+<footer>
+  <p><a href="/"><strong>סליחות עדות המזרח</strong></a> — הסדר המלא, מנוקד, עם מעקב חי מהכותל.</p>
+  <p>גמר חתימה טובה</p>
+</footer>
+${adBlock('bottom', ADSENSE_SLOT_BOTTOM)}
+<script src="/app.js?v=${ver('app.js')}" defer></script>
+</body>
+</html>`;
+fs.writeFileSync(path.join(root, 'public/hatarat-kelalot.html'), hkHtml);
+
 // robots + sitemap
 fs.writeFileSync(path.join(root, 'public/robots.txt'),
 `User-agent: *
@@ -224,12 +293,13 @@ Sitemap: ${SITE}/sitemap.xml
 `);
 
 // מפת האתר מכילה רק כתובות אמיתיות. עוגנים (#) אינם דפים נפרדים וגוגל
-// מתעלמת מהם — הוספתם רק מייצרת אזהרות. לאתר יש דף אחד.
+// מתעלמת מהם — הוספתם רק מייצרת אזהרות.
 const today = new Date().toISOString().slice(0, 10);
 fs.writeFileSync(path.join(root, 'public/sitemap.xml'),
 `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url><loc>${SITE}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
+<url><loc>${SITE}/hatarat-kelalot</loc><lastmod>${today}</lastmod><changefreq>yearly</changefreq><priority>0.7</priority></url>
 </urlset>`);
 
 console.log('built public/index.html (%d KB), robots.txt, sitemap.xml', Math.round(html.length / 1024));
