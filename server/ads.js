@@ -1,14 +1,15 @@
 // פרסומות האתר: הגדרה אחת לבנייה (build_site) ולשרת (/go/:id).
 // הקישור היוצא נקבע כאן בלבד — /go/:id מפנה רק לכתובות שברשימה (ללא הפניה פתוחה).
 const OWNER_WA = '972527182810';
-// מספר הוואטסאפ של דניאל (הצעות נישואין). כל עוד אינו מוגדר — הפניות מגיעות לבעל האתר.
-const DANEL_WA = (process.env.DANEL_WHATSAPP || '').replace(/\D/g, '') || OWNER_WA;
+// מספר הוואטסאפ של דניאל (הצעות נישואין); DANEL_WHATSAPP גובר
+const DANEL_WA = (process.env.DANEL_WHATSAPP || '').replace(/\D/g, '') || '972533104418';
 
 const wa = (phone, text) => `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 
 export const ADS = {
   tech: {
     pos: 'top',
+    frameSec: 3, // שניות לכל מסך — קצב שונה לכל באנר
     name: 'כלים טכנולוגיים לעסקים',
     url: wa(OWNER_WA, 'היי, ראיתי את הפרסומת באתר הסליחות ואשמח לשמוע על כלים טכנולוגיים לעסק שלי'),
     frames: [
@@ -21,6 +22,7 @@ export const ADS = {
   },
   danel: {
     pos: 'bottom',
+    frameSec: 4.5,
     name: 'דניאל — הצעות נישואין',
     url: wa(DANEL_WA, 'היי, ראיתי את הפרסומת באתר הסליחות ואשמח לשמוע על עיצוב הצעת נישואין'),
     logo: '/ads/danel-logo.png',

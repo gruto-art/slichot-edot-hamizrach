@@ -136,9 +136,9 @@ function render(d){
   const AD_NAMES={tech:'עליון — כלים טכנולוגיים לעסקים',danel:'תחתון — דניאל הצעות נישואין',share:'כפתור שיתוף בוואטסאפ'};
   const ctr=(c,v)=>v?(c/v*100).toFixed(1)+'%':'—';
   const ads=d.ads||{};
-  $('#adsTbl').innerHTML='<tr><th>פרסומת</th><th>צפיות היום</th><th>קליקים היום</th><th>צפיות 7 ימים</th><th>קליקים 7 ימים</th><th>סה״כ צפיות</th><th>סה״כ קליקים</th><th>CTR</th></tr>'+
+  $('#adsTbl').innerHTML='<tr><th>פרסומת</th><th>צפיות היום</th><th>קליקים היום</th><th>צפיות 7 ימים</th><th>קליקים 7 ימים</th><th>סה״כ צפיות</th><th>סה״כ קליקים</th><th>CTR</th><th>הסתרות</th></tr>'+
     ['tech','danel','share'].map(k=>{const a=ads[k]||{views:0,clicks:0,viewsToday:0,clicksToday:0,views7d:0,clicks7d:0};
-      return `<tr><td>${esc(AD_NAMES[k])}</td><td>${k==='share'?'—':a.viewsToday}</td><td>${a.clicksToday}</td><td>${k==='share'?'—':a.views7d}</td><td>${a.clicks7d}</td><td>${k==='share'?'—':a.views}</td><td>${a.clicks}</td><td>${k==='share'?'—':ctr(a.clicks,a.views)}</td></tr>`;}).join('');
+      return `<tr><td>${esc(AD_NAMES[k])}</td><td>${k==='share'?'—':a.viewsToday}</td><td>${a.clicksToday}</td><td>${k==='share'?'—':a.views7d}</td><td>${a.clicks7d}</td><td>${k==='share'?'—':a.views}</td><td>${a.clicks}</td><td>${k==='share'?'—':ctr(a.clicks,a.views)}</td><td>${k==='share'?'—':(a.closes||0)}</td></tr>`;}).join('');
 
   $('#feed').innerHTML='<tr><th>נכנס</th><th>מכשיר</th><th>מקור</th><th>זמן פעיל</th><th>גלילה</th><th>מעקב כותל</th></tr>'+
     d.feed.map(f=>`<tr><td>${new Date(f.at).toLocaleTimeString('he-IL')}</td><td>${esc(f.device)} · ${esc(f.os)}</td><td>${esc(f.ref)}</td><td>${fmt(f.activeSec)}</td><td>${esc(f.scroll)}%</td><td>${f.live?'✔':'—'}</td></tr>`).join('');

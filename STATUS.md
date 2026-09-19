@@ -137,8 +137,9 @@ RELAY_URL=http://188.34.167.205:9911 RELAY_TOKEN=<מה-skill> python3 ~/p.py
 ## 19/9 — פרסומות, שיתוף בוואטסאפ, אבטחה
 - **פרסומות בית** (`server/ads.js` — מקור אחד לבנייה ולשרת): באנר מונפש של 5 מסכים בלולאה (CSS, מסומן "פרסומת").
   עליון: כלים טכנולוגיים לעסקים → וואטסאפ 0527182810. תחתון: דניאל הצעות נישואין (לוגו `public/ads/danel-logo.png`
-  מ-`~/Downloads/busines/proposal-6/danel-proposal-dreams`). **מספר של דניאל לא נמצא במחשב** — עד שיוגדר
-  `DANEL_WHATSAPP` ב-Render, הקליקים שלו מגיעים ל-0527182810.
+  מ-`~/Downloads/busines/proposal-6/danel-proposal-dreams`). וואטסאפ של דניאל: 0533104418 (`DANEL_WHATSAPP` גובר).
+  קצב שונה: עליון 3 שנ׳ למסך, תחתון 4.5 (`frameSec`). כפתור × מופיע אחרי 30 שנ׳ ומסתיר את הבאנר ל-5 דקות
+  (localStorage, נשמר גם ברענון; נספר כ-`ad_close`, עמודת "הסתרות" ב-`/admin`).
 - **מעקב**: קליק = `GET /go/:id` (נרשם בשרת, `ad_click`, מפנה רק לכתובת מ-ads.js); צפייה = חצי באנר נראה שנייה
   (`ad_view`); שיתוף = `share_whatsapp`. טבלה "פרסומות ושיתופים" ב-`/admin`.
 - **כפתור שיתוף** בסרגל: `wa.me/?text=` עם קישור + `utm_source=whatsapp`.

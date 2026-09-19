@@ -205,14 +205,16 @@ export function adStats() {
   const now = Date.now();
   const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const rows = db
-    ? db.prepare("SELECT ts,name,meta FROM events WHERE name IN ('ad_view','ad_click','share_whatsapp')").all()
-    : mem.events.filter(e => ['ad_view', 'ad_click', 'share_whatsapp'].includes(e.name));
+    ? db.prepare("SELECT ts,name,meta FROM events WHERE name IN ('ad_view','ad_click','ad_close','share_whatsapp')").all()
+    : mem.events.filter(e => ['ad_view', 'ad_click', 'ad_close', 'share_whatsapp'].includes(e.name));
   const out = {};
-  const bucket = k => (out[k] ||= { views: 0, clicks: 0, viewsToday: 0, clicksToday: 0, views7d: 0, clicks7d: 0 });
+  const bucket = k => (out[k] ||= { closes: 0, views: 0, clicks: 0, viewsToday: 0, clicksToday: 0, views7d: 0, clicks7d: 0 });
   for (const r of rows) {
     let ad = 'share';
     if (r.name !== 'share_whatsapp') { try { ad = String(JSON.parse(r.meta).ad || '?').slice(0, 20); } catch { ad = '?'; } }
-    const b = bucket(ad), kind = r.name === 'ad_view' ? 'views' : 'clicks';
+    const b = bucket(ad);
+    if (r.name === 'ad_close') { b.closes++; continue; }
+    const kind = r.name === 'ad_view' ? 'views' : 'clicks';
     b[kind]++;
     if (r.ts >= +d0) b[kind + 'Today']++;
     if (r.ts >= now - 7 * 86400e3) b[kind + '7d']++;

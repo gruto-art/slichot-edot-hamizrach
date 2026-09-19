@@ -27,12 +27,12 @@ const KEYWORDS = 'סליחות עדות המזרח, סליחות ספרדי, ס�
 function houseAd(id, ad) {
   const frames = ad.frames.map((f, i) => `<span class="af" style="--i:${i}">${f}</span>`).join('');
   const logo = ad.logo ? `<img class="alogo" src="${esc(ad.logo)}" alt="" width="40" height="40">` : '';
-  return `<a class="had" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" aria-label="${esc(ad.name)} — פרסומת" style="--n:${ad.frames.length}">${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
+  return `<a class="had" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" aria-label="${esc(ad.name)} — פרסומת" style="--n:${ad.frames.length};--d:${ad.frameSec || 3}s">${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
 }
 
 function adBlock(pos, slot) {
   const house = Object.entries(ADS).find(([, a]) => a.pos === pos);
-  if (house) return `<aside class="ad ad-${pos}" aria-label="פרסומת"><div class="ad-inner">${houseAd(...house)}</div></aside>`;
+  if (house) return `<aside class="ad ad-${pos}" aria-label="פרסומת" data-slot="${pos}"><div class="ad-inner">${houseAd(...house)}<button class="ad-x" type="button" hidden aria-label="הסתרת הפרסומת ל-5 דקות" title="הסתרה ל-5 דקות">×</button></div></aside>`;
   const inner = ADSENSE_CLIENT && slot
     ? `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc(ADSENSE_CLIENT)}" data-ad-slot="${esc(slot)}" data-ad-format="horizontal" data-full-width-responsive="true"></ins><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`
     : `<div class="ad-ph">שטח פרסום · ${pos === 'top' ? 'עליון' : 'תחתון'}</div>`;

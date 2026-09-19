@@ -187,7 +187,7 @@ l:last-child{margin-bottom:0}
 .af{
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:.4em;text-align:center;
   font-size:clamp(.82rem,2.6vw,1.05rem);line-height:1.25;opacity:0;
-  animation:adFrame calc(var(--n) * 3s) infinite;animation-delay:calc(var(--i) * 3s);
+  animation:adFrame calc(var(--n) * var(--d,3s)) infinite;animation-delay:calc(var(--i) * var(--d,3s));
 }
 .af b{font-weight:700}
 .af .ic{font-size:1.2em}
@@ -206,3 +206,14 @@ l:last-child{margin-bottom:0}
 }
 .btn-wa{display:inline-flex;align-items:center;gap:.35em;text-decoration:none;background:#25d366;color:#06311b;border-color:#25d366;font-weight:600}
 .btn-wa:hover{background:#1ebe5b}
+
+/* כפתור הסתרה: מופיע אחרי חצי דקה, מסתיר את הבאנר ל-5 דקות */
+.ad-inner{position:relative}
+.ad-x{
+  position:absolute;top:50%;inset-inline-end:14px;transform:translateY(-50%);z-index:2;
+  width:26px;height:26px;border-radius:50%;border:0;cursor:pointer;
+  background:rgba(0,0,0,.55);color:#fff;font-size:17px;line-height:26px;padding:0;
+}
+.ad-x:hover{background:rgba(0,0,0,.8)}
+.ad.ad-hidden{display:none}
+.ad-top.ad-hidden ~ .toolbar{top:0}

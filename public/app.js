@@ -169,6 +169,22 @@
     }), { threshold: 0.5 });
     document.querySelectorAll('a[data-ad]').forEach(a => io.observe(a));
   }
+  // הסתרת פרסומת: הכפתור מופיע אחרי 30 שניות, ההסתרה נשמרת ל-5 דקות (גם ברענון)
+  const AD_SHOW_CLOSE_MS = 30e3, AD_HIDE_MS = 5 * 60e3;
+  document.querySelectorAll('.ad[data-slot]').forEach(box => {
+    const key = 'adHidden_' + box.dataset.slot, x = box.querySelector('.ad-x');
+    if (!x) return;
+    const show = () => { box.classList.remove('ad-hidden'); x.hidden = true; setTimeout(() => { x.hidden = false; }, AD_SHOW_CLOSE_MS); };
+    const hideFor = ms => { box.classList.add('ad-hidden'); setTimeout(show, ms); };
+    const until = Number(store.get(key, 0)) || 0;
+    if (until > Date.now()) hideFor(until - Date.now()); else show();
+    x.addEventListener('click', () => {
+      store.set(key, Date.now() + AD_HIDE_MS);
+      track('ad_close', { meta: { ad: box.querySelector('[data-ad]')?.dataset.ad || box.dataset.slot } });
+      hideFor(AD_HIDE_MS);
+    });
+  });
+
   const wa = document.getElementById('waShare');
   if (wa) wa.addEventListener('click', () => track('share_whatsapp'));
 
