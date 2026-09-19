@@ -163,15 +163,6 @@ ${adBlock('top', ADSENSE_SLOT_TOP)}
 </header>
 
 <main>
-  <section class="quickfacts" aria-label="בקצרה">
-    <dl>
-      <div><dt>איזה נוסח</dt><dd>עדות המזרח (ספרדי)</dd></div>
-      <div><dt>מתי</dt><dd>מא׳ באלול ועד יום הכיפורים</dd></div>
-      <div><dt>באיזו שעה</dt><dd>אשמורת הבוקר, לפני עלות השחר</dd></div>
-      <div><dt>היכן מתחילים</dt><dd><a href="#ashrei">אַשְׁרֵי</a></dd></div>
-    </dl>
-  </section>
-
   <details class="toc">
     <summary>סדר הסליחות — תוכן העניינים (${doc.sections.length} פרקים)</summary>
     <ol>${toc}</ol>
