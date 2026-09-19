@@ -62,13 +62,14 @@ function rateLimit(max, windowMs) {
 const adminLimit = rateLimit(120, 60e3);
 const failLimit = new Map(); // ניסיונות טוקן כושלים לפי IP
 setInterval(() => failLimit.clear(), 15 * 60e3).unref();
-const beaconLimit = rateLimit(240, 60e3);
+const beaconLimit = rateLimit(3000, 60e3);   // פעימה כל 15 שנ׳ לגולש; כתובת משותפת = הרבה גולשים
 
 /* ---------- מעקב חי ---------- */
 const sseByIp = new Map();
 app.get('/api/live/stream', (req, res) => {
   const ip = req.ip || 'x';
-  if ((sseByIp.get(ip) || 0) >= 6) return res.status(429).end();
+  // גבוה בכוונה: מנויי סלולר (CGNAT) ו-WiFi של בית כנסת חולקים כתובת אחת
+  if ((sseByIp.get(ip) || 0) >= 400) return res.status(429).end();
   sseByIp.set(ip, (sseByIp.get(ip) || 0) + 1);
   res.on('close', () => {
     const c = (sseByIp.get(ip) || 1) - 1; if (c <= 0) sseByIp.delete(ip); else sseByIp.set(ip, c);
