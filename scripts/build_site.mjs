@@ -227,6 +227,7 @@ fs.writeFileSync(path.join(root, 'public/robots.txt'),
 Allow: /
 Disallow: /admin\nDisallow: /sync
 Disallow: /api/
+Disallow: /go/
 Sitemap: ${SITE}/sitemap.xml
 `);
 
