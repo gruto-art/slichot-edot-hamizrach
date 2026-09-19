@@ -66,6 +66,11 @@ button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
       הקלטה של ערב קודם מנוגנת בקצב אמיתי. ניקוי הקישור מחזיר את המעקב לערוץ הכותל (שידור סליחות חי אם יש, אחרת מצלמת הרחבה).</p>
     </div>
 
+    <div class="card" style="margin-bottom:1.2rem">
+      <h2 style="margin-top:0">יומן מעקב חי <span class="muted" id="logInfo" style="font-size:.8rem"></span></h2>
+      <pre id="liveLog" style="max-height:420px;overflow:auto;white-space:pre-wrap;font-size:.78rem;line-height:1.6;margin:0;direction:rtl;text-align:right"></pre>
+    </div>
+
     <div class="grid" id="kpis"></div>
 
     <h2>כניסות ב־24 השעות האחרונות</h2>
@@ -108,7 +113,7 @@ async function load(){
     $('#storeTag').textContent = 'אחסון: '+d.storage;
     $('#upd').textContent = 'עודכן '+new Date(d.now).toLocaleTimeString('he-IL');
     render(d);
-    loadSource();
+    loadSource(); loadLog();
   }catch(e){ $('#msg').textContent='שגיאת רשת: '+e.message; }
 }
 
@@ -156,6 +161,21 @@ const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const MODES = {off:'כבוי', starting:'מתחבר', listening:'קולט ומתמלל', manual:'סנכרון גבאי ידני'};
 const KINDS = {override:'קישור מלוח הבקרה', channel:'שידור סליחות חי בערוץ הכותל', camera:'מצלמת רחבת הכותל', none:'—'};
 
+let logSince=0, logLines=[];
+async function loadLog(){
+  if(!token) return;
+  try{
+    const r=await fetch('/api/live/log?since='+logSince,{headers:{'x-admin-token':token}});
+    if(!r.ok) return;
+    const d=await r.json();
+    if(d.lines.length){ logSince=d.lines[d.lines.length-1].at; logLines=logLines.concat(d.lines).slice(-600); }
+    const el=$('#liveLog'), atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-20;
+    el.textContent=logLines.map(l=>`${new Date(l.at).toLocaleTimeString('he-IL')}  [${l.src}]  ${l.msg}`).join('\n')||'אין עדיין רשומות.';
+    if(atBottom) el.scrollTop=el.scrollHeight;
+    $('#logInfo').textContent='· מתעדכן כל 5 שניות · '+logLines.length+' שורות';
+  }catch{}
+}
+setInterval(loadLog,5000);
 async function loadSource(){
   if(!token) return;
   const r = await fetch('/api/live/source',{headers:{'x-admin-token':token}});

@@ -21,6 +21,14 @@ const doc = JSON.parse(fs.readFileSync(path.join(root, 'data/slichot.json'), 'ut
 const words = JSON.parse(fs.readFileSync(path.join(root, 'data/index_words.json'), 'utf8'));
 const kotel = new KotelEngine(doc, words);
 
+// יומן מעקב חי: שורות מהאתר ומהמזין (במחשב של גרוק בוט), 800 אחרונות בזיכרון + ביומן של Render
+const liveLog = [];
+function addLog(src, msg, at = Date.now()) {
+  liveLog.push({ at, src, msg: String(msg).slice(0, 400) });
+  if (liveLog.length > 800) liveLog.shift();
+  if (src === 'אתר') console.log('[live]', msg);
+}
+
 // קישור שידור מלוח הבקרה נשמר בדיסק, כדי שלא ייעלם כשהשירות מתעורר מחדש
 const SOURCE_FILE = path.join(process.env.DATA_DIR || path.join(root, 'data'), 'live-source.json');
 try { kotel.override = cleanSourceUrl(JSON.parse(fs.readFileSync(SOURCE_FILE, 'utf8')).url); } catch {}
@@ -62,7 +70,11 @@ app.get('/api/live/stream', (req, res) => {
   const ip = req.ip || 'x';
   if ((sseByIp.get(ip) || 0) >= 6) return res.status(429).end();
   sseByIp.set(ip, (sseByIp.get(ip) || 0) + 1);
-  res.on('close', () => { const c = (sseByIp.get(ip) || 1) - 1; if (c <= 0) sseByIp.delete(ip); else sseByIp.set(ip, c); });
+  res.on('close', () => {
+    const c = (sseByIp.get(ip) || 1) - 1; if (c <= 0) sseByIp.delete(ip); else sseByIp.set(ip, c);
+    addLog('אתר', `מתפלל התנתק מהמעקב (נשארו ${kotel.listeners})`);
+  });
+  addLog('אתר', `מתפלל התחבר למעקב (סה״כ ${kotel.listeners + 1})`);
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -111,6 +123,7 @@ app.post('/api/live/manual', requireAdmin, (req, res) => {
   }
   if (!Number.isFinite(word)) return res.status(400).json({ error: 'word or section required' });
   kotel.manual(word);
+  addLog('אתר', `סנכרון גבאי: מילה ${word} (${kotel.state.section})`);
   res.json({ ok: true, word, section: kotel.state.section });
 });
 
@@ -119,8 +132,16 @@ app.post('/api/live/manual', requireAdmin, (req, res) => {
 app.post('/api/live/remote', requireAdmin, (req, res) => {
   const word = Number(req.body?.word);
   const confidence = Number(req.body?.confidence) || 0;
-  if (Number.isFinite(word) && word >= 0 && word < doc.wordCount) kotel.remotePosition(word, confidence);
-  else kotel.remoteBeat(!!req.body?.ingesting, req.body?.idle);
+  if (Array.isArray(req.body?.logs)) {
+    for (const l of req.body.logs.slice(0, 300)) if (l && l.msg) addLog('מזין', l.msg, Number(l.at) || Date.now());
+  }
+  const wasMode = kotel.state.mode;
+  if (Number.isFinite(word) && word >= 0 && word < doc.wordCount) {
+    kotel.remotePosition(word, confidence);
+    addLog('אתר', `מיקום ${word} (${kotel.state.section}) נשלח ל-${kotel.listeners} מתפללים`
+      + (req.body?.segReadyAt ? ` · ${((Date.now() - Number(req.body.segReadyAt)) / 1000).toFixed(1)} שנ׳ מסוף הקטע` : ''));
+  } else kotel.remoteBeat(!!req.body?.ingesting, req.body?.idle);
+  if (kotel.state.mode !== wasMode) addLog('אתר', `מצב המעקב: ${wasMode} → ${kotel.state.mode}${req.body?.idle ? ' (' + req.body.idle + ')' : ''}`);
   const src = req.body?.source;
   if (src && typeof src.url === 'string') {
     kotel.remoteSource = { url: src.url.slice(0, 500), kind: String(src.kind || ''), title: String(src.title || '').slice(0, 200), at: Date.now() };
@@ -131,9 +152,14 @@ app.post('/api/live/remote', requireAdmin, (req, res) => {
 
 // מקור השידור: קישור לבחינה (שידור חי או הקלטה, אפשר עם ?t=שניות), או ריק לחזרה לערוץ הכותל
 app.get('/api/live/source', requireAdmin, (_req, res) => res.json(sourceStatus()));
+app.get('/api/live/log', requireAdmin, (req, res) => {
+  const since = Number(req.query.since) || 0;
+  res.json({ now: Date.now(), lines: liveLog.filter(l => l.at > since).slice(-400) });
+});
 app.post('/api/live/source', requireAdmin, (req, res) => {
   try {
     kotel.setSource(req.body?.url || '');
+    addLog('אתר', req.body?.url ? `לוח הבקרה: מקור חדש ${String(req.body.url).slice(0, 200)}` : 'לוח הבקרה: המקור נוקה — חזרה לערוץ הכותל');
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
@@ -234,6 +260,7 @@ app.get('/data/slichot.json', (_req, res) => res.sendFile(path.join(root, 'data/
 
 app.use((_req, res) => res.status(404).sendFile(path.join(root, 'public/index.html')));
 
+addLog('אתר', 'השרת עלה');
 app.listen(PORT, () => {
   console.log(`סליחות עדות המזרח — פועל על פורט ${PORT}`);
   console.log(`  מעקב כותל: ${kotelConfig.streamUrl ? 'שידור מוגדר' : 'לא מוגדר'} · תמלול: ${kotelConfig.provider}`);

@@ -128,9 +128,10 @@ function prepareCookies(src) {
 }
 
 export class KotelEngine {
-  constructor(doc, words, { onPosition } = {}) {
+  constructor(doc, words, { onPosition, onSegment } = {}) {
     this.doc = doc;
     this.onPosition = onPosition;
+    this.onSegment = onSegment;   // יומן: זמני תמלול והחלטה לכל קטע
     this.remote = { at: 0, ingesting: false, url: '' };
     this.override = '';   // קישור שהוזן בלוח הבקרה — גובר על הכול
     this.autoUrl = '';    // שידור סליחות חי שנמצא בערוץ הכותל
@@ -432,6 +433,7 @@ export class KotelEngine {
       }
     }
     if (!this.pendingStart || src !== this.streamUrl) return;   // בוטל או שהמקור הוחלף בינתיים
+    this.mediaUrl = mediaUrl; this.mediaLive = isLive;   // למדידת עיכוב השידור ביוטיוב
     // הקלטה (לא שידור חי) מנוגנת בקצב אמיתי, מנקודת ההתחלה שבקישור
     const startSec = this.override ? startFromUrl(src) : CFG.startSec;
     const realtime = local || CFG.realtime || !isLive;
@@ -554,19 +556,24 @@ export class KotelEngine {
 
   async _processSegment(file) {
     let text = '';
+    const readyAt = Date.now();   // הקטע נסגר (הקול שבסופו הגיע עכשיו מיוטיוב)
+    const seg = { file: path.basename(file), readyAt, sttMs: 0 };
     try {
       const buf = fs.readFileSync(file);
-      if (buf.length < 20000) return; // קטע קצר/שקט מדי
+      if (buf.length < 20000) return this.onSegment?.({ ...seg, skip: 'קצר/שקט' }); // קטע קצר/שקט מדי
       text = await transcribe(buf, { hintWord: this.sttWord });
+      seg.sttMs = Date.now() - readyAt;
     } catch (e) {
       console.warn('[kotel] transcribe failed:', e.message);
-      return;
+      return this.onSegment?.({ ...seg, sttMs: Date.now() - readyAt, error: e.message });
     }
-    if (!text) return;
-    const toks = tokenize(text);
-    if (!toks.length) return;
+    const toks = text ? tokenize(text) : [];
+    if (!toks.length) return this.onSegment?.({ ...seg, skip: 'תמלול ריק' });
     // היגיון ההתקדמות (tracker.js) מחליט אם זו התקדמות רגילה, דילוג מאושר או רעש
     const r = this.tracker.update(toks, Date.now());
+    // היומן קודם, כדי שהמיקום הנשלח (onPosition) ישויך לקטע הזה
+    this.onSegment?.({ ...seg, words: toks.length, text: text.slice(0, 90),
+      result: r ? { word: r.word, kind: r.kind, confidence: r.confidence, section: this.sectionFor(r.word) } : null });
     if (r) this.setPosition(r.word, r.confidence, 'stt');
     // מצב צל: Jev רק רושם את דעתו לצד החלטת המנגנון הקיים
     this.jev?.observe(text, r ? { word: r.word, section: this.sectionFor(r.word), kind: r.kind } : null,
