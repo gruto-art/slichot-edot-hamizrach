@@ -155,6 +155,23 @@
     ua: navigator.userAgent
   });
 
+  // פרסומות: צפייה נספרת פעם אחת לעמוד, כשחצי מהבאנר נראה שנייה לפחות. הקליק נספר בשרת (/go/:id).
+  document.querySelectorAll('a[data-ad]').forEach(a => {
+    a.href = '/go/' + a.dataset.ad + '?s=' + encodeURIComponent(sid);
+  });
+  if ('IntersectionObserver' in window) {
+    const seen = new Set(), timers = new Map();
+    const io = new IntersectionObserver(entries => entries.forEach(e => {
+      const id = e.target.dataset.ad;
+      if (seen.has(id)) return;
+      if (e.isIntersecting) timers.set(id, setTimeout(() => { seen.add(id); io.unobserve(e.target); track('ad_view', { meta: { ad: id } }); }, 1000));
+      else clearTimeout(timers.get(id));
+    }), { threshold: 0.5 });
+    document.querySelectorAll('a[data-ad]').forEach(a => io.observe(a));
+  }
+  const wa = document.getElementById('waShare');
+  if (wa) wa.addEventListener('click', () => track('share_whatsapp'));
+
   addEventListener('scroll', () => {
     const h = document.body.scrollHeight - innerHeight;
     if (h > 0) maxScroll = Math.max(maxScroll, Math.min(100, Math.round((scrollY / h) * 100)));

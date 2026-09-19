@@ -4,7 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { KotelEngine, kotelConfig, resolveFfmpeg, cleanSourceUrl } from './kotel.js';
 import { execFileSync } from 'node:child_process';
-import { recordHit, recordPulse, recordEvent, stats, liveFeed } from './analytics.js';
+import { recordHit, recordPulse, recordEvent, stats, liveFeed, adStats, isBot } from './analytics.js';
+import { adById } from './ads.js';
+import crypto from 'node:crypto';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const app = express();
@@ -27,11 +29,40 @@ try { kotel.override = cleanSourceUrl(JSON.parse(fs.readFileSync(SOURCE_FILE, 'u
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.path === '/admin' || req.path === '/sync') {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  }
   next();
 });
 
+// הגבלת קצב פשוטה בזיכרון (לפי IP): נגד ניחוש טוקן ונגד הצפת נקודות המדידה
+function rateLimit(max, windowMs) {
+  const hits = new Map();
+  setInterval(() => hits.clear(), windowMs).unref();
+  return (req, res, next) => {
+    const k = req.ip || 'x';
+    const n = (hits.get(k) || 0) + 1;
+    hits.set(k, n);
+    if (n > max) return res.status(429).json({ error: 'too many requests' });
+    next();
+  };
+}
+const adminLimit = rateLimit(120, 60e3);
+const failLimit = new Map(); // ניסיונות טוקן כושלים לפי IP
+setInterval(() => failLimit.clear(), 15 * 60e3).unref();
+const beaconLimit = rateLimit(240, 60e3);
+
 /* ---------- מעקב חי ---------- */
+const sseByIp = new Map();
 app.get('/api/live/stream', (req, res) => {
+  const ip = req.ip || 'x';
+  if ((sseByIp.get(ip) || 0) >= 6) return res.status(429).end();
+  sseByIp.set(ip, (sseByIp.get(ip) || 0) + 1);
+  res.on('close', () => { const c = (sseByIp.get(ip) || 1) - 1; if (c <= 0) sseByIp.delete(ip); else sseByIp.set(ip, c); });
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -52,10 +83,23 @@ app.get('/api/live/state', (_req, res) => {
   });
 });
 
+const tokenOk = t => {
+  if (!ADMIN_TOKEN || !t) return false;
+  const a = crypto.createHash('sha256').update(String(t)).digest();
+  const b = crypto.createHash('sha256').update(ADMIN_TOKEN).digest();
+  return crypto.timingSafeEqual(a, b);
+};
 function requireAdmin(req, res, next) {
-  const t = req.get('x-admin-token') || req.query.token || '';
-  if (!ADMIN_TOKEN || t !== ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
-  next();
+  adminLimit(req, res, () => {
+    const ip = req.ip || 'x';
+    if ((failLimit.get(ip) || 0) >= 20) return res.status(429).json({ error: 'too many failed attempts' });
+    const t = req.get('x-admin-token') || '';
+    if (!tokenOk(t)) {
+      failLimit.set(ip, (failLimit.get(ip) || 0) + 1);
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    next();
+  });
 }
 
 // סנכרון ידני (למשל ע"י גבאי): { word } או { section: "slug" }
@@ -125,6 +169,7 @@ const parseBeacon = (req, _res, next) => {
   if (typeof req.body === 'string') { try { req.body = JSON.parse(req.body); } catch { req.body = {}; } }
   next();
 };
+app.use(['/api/hit', '/api/pulse', '/api/leave', '/api/event'], beaconLimit);
 app.use('/api/hit', express.text({ type: '*/*', limit: '16kb' }), parseBeacon);
 app.use('/api/pulse', express.text({ type: '*/*', limit: '8kb' }), parseBeacon);
 app.use('/api/leave', express.text({ type: '*/*', limit: '8kb' }), parseBeacon);
@@ -135,7 +180,19 @@ app.post('/api/pulse', (req, res) => { try { recordPulse(req.body || {}); } catc
 app.post('/api/leave', (req, res) => { try { recordPulse(req.body || {}); } catch {} res.status(204).end(); });
 app.post('/api/event', (req, res) => { try { recordEvent(req.body || {}); } catch {} res.status(204).end(); });
 
-app.get('/api/stats', requireAdmin, (_req, res) => res.json({ ...stats(), liveListeners: kotel.listeners, feed: liveFeed() }));
+app.get('/api/stats', requireAdmin, (_req, res) => res.json({ ...stats(), ads: adStats(), liveListeners: kotel.listeners, feed: liveFeed() }));
+
+/* ---------- פרסומות: קליק נרשם בשרת ומפנה לכתובת קבועה מ-ads.js ---------- */
+app.get('/go/:id', (req, res) => {
+  const ad = adById(req.params.id);
+  if (!ad) return res.redirect(302, '/');
+  if (!isBot(req.get('user-agent'))) {
+    try { recordEvent({ event: 'ad_click', sid: String(req.query.s || ''), meta: { ad: req.params.id } }); } catch {}
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.redirect(302, ad.url);
+});
 // אבחון תלויות נבדק פעם אחת בעלייה — בדיקת הבריאות נקראת תדיר ואסור שתחסום
 const has = (bin, args) => { try { execFileSync(bin, args, { stdio: 'ignore', timeout: 5000 }); return true; } catch { return false; } };
 const deps = { ffmpeg: false, ytdlp: false };
@@ -166,6 +223,7 @@ app.get('/sync', (_req, res) => res.sendFile(path.join(root, 'public/sync.html')
 /* ---------- סטטי ---------- */
 app.use(express.static(path.join(root, 'public'), {
   maxAge: '1h',
+  redirect: false,
   setHeaders(res, file) {
     if (file.endsWith('.html')) res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
     if (file.endsWith('.css') || file.endsWith('.js')) res.setHeader('Cache-Control', 'public, max-age=3600');

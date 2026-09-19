@@ -83,6 +83,10 @@ button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
       <div><h2>קמפיינים (UTM)</h2><table id="camps"></table></div>
     </div>
 
+    <h2>פרסומות ושיתופים</h2>
+    <table id="adsTbl"></table>
+    <div style="height:1.3rem"></div>
+
     <h2>מבקרים אחרונים (חי)</h2>
     <table id="feed"></table>
   </div>
@@ -129,8 +133,15 @@ function render(d){
   table('#browsers',['דפדפן','כניסות'],d.breakdown.browsers);
   table('#camps',['קמפיין','כניסות'],d.breakdown.campaigns.length?d.breakdown.campaigns:[{k:'אין',v:0}]);
 
+  const AD_NAMES={tech:'עליון — כלים טכנולוגיים לעסקים',danel:'תחתון — דניאל הצעות נישואין',share:'כפתור שיתוף בוואטסאפ'};
+  const ctr=(c,v)=>v?(c/v*100).toFixed(1)+'%':'—';
+  const ads=d.ads||{};
+  $('#adsTbl').innerHTML='<tr><th>פרסומת</th><th>צפיות היום</th><th>קליקים היום</th><th>צפיות 7 ימים</th><th>קליקים 7 ימים</th><th>סה״כ צפיות</th><th>סה״כ קליקים</th><th>CTR</th></tr>'+
+    ['tech','danel','share'].map(k=>{const a=ads[k]||{views:0,clicks:0,viewsToday:0,clicksToday:0,views7d:0,clicks7d:0};
+      return `<tr><td>${esc(AD_NAMES[k])}</td><td>${k==='share'?'—':a.viewsToday}</td><td>${a.clicksToday}</td><td>${k==='share'?'—':a.views7d}</td><td>${a.clicks7d}</td><td>${k==='share'?'—':a.views}</td><td>${a.clicks}</td><td>${k==='share'?'—':ctr(a.clicks,a.views)}</td></tr>`;}).join('');
+
   $('#feed').innerHTML='<tr><th>נכנס</th><th>מכשיר</th><th>מקור</th><th>זמן פעיל</th><th>גלילה</th><th>מעקב כותל</th></tr>'+
-    d.feed.map(f=>`<tr><td>${new Date(f.at).toLocaleTimeString('he-IL')}</td><td>${f.device} · ${f.os}</td><td>${f.ref}</td><td>${fmt(f.activeSec)}</td><td>${f.scroll}%</td><td>${f.live?'✔':'—'}</td></tr>`).join('');
+    d.feed.map(f=>`<tr><td>${new Date(f.at).toLocaleTimeString('he-IL')}</td><td>${esc(f.device)} · ${esc(f.os)}</td><td>${esc(f.ref)}</td><td>${fmt(f.activeSec)}</td><td>${esc(f.scroll)}%</td><td>${f.live?'✔':'—'}</td></tr>`).join('');
 }
 function fmt(s){ return s>=60? Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+' דק׳' : s+' שנ׳'; }
 function bars(sel,arr){
@@ -139,7 +150,7 @@ function bars(sel,arr){
 }
 function table(sel,head,rows){
   $(sel).innerHTML='<tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr>'+
-    rows.map(r=>`<tr><td>${r.k}</td><td>${r.v}</td></tr>`).join('');
+    rows.map(r=>`<tr><td>${esc(r.k)}</td><td>${esc(r.v)}</td></tr>`).join('');
 }
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const MODES = {off:'כבוי', starting:'מתחבר', listening:'קולט ומתמלל', manual:'סנכרון גבאי ידני'};

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ADS } from '../server/ads.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const doc = JSON.parse(fs.readFileSync(path.join(root, 'data/slichot.json'), 'utf8'));
@@ -22,7 +23,16 @@ const TITLE = 'סליחות עדות המזרח — תפילת הסליחות ב
 const DESC = 'תפילת הסליחות בנוסח עדות המזרח (ספרדי), הסדר המלא מנוקד ומעומד לקריאה: לך ה׳ הצדקה, י״ג מידות, אשמנו, אדון הסליחות, אבינו מלכנו ושומר ישראל. לכל ימי אלול, לעשרת ימי תשובה ולערב יום כיפור — וכולל מעקב חי אחרי הסליחות בכותל המערבי.';
 const KEYWORDS = 'סליחות עדות המזרח, סליחות ספרדי, סליחות ספרדים, תפילת הסליחות, סדר סליחות, סליחות מנוקד, סליחות אלול, סליחות ערב יום כיפור, סליחות עשרת ימי תשובה, סליחות בכותל, סליחות מהכותל בשידור חי, סליחות לאשמורת הבוקר, מתי אומרים סליחות, לך ה׳ הצדקה, י״ג מידות, אדון הסליחות, אשמנו, אבינו מלכנו, שומר ישראל, טקסט סליחות מלא';
 
+// באנר מונפש: 4–5 מסכים מתחלפים בלולאה (CSS בלבד), מסומן "פרסומת", הקליק עובר דרך /go/:id למעקב
+function houseAd(id, ad) {
+  const frames = ad.frames.map((f, i) => `<span class="af" style="--i:${i}">${f}</span>`).join('');
+  const logo = ad.logo ? `<img class="alogo" src="${esc(ad.logo)}" alt="" width="40" height="40">` : '';
+  return `<a class="had" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" aria-label="${esc(ad.name)} — פרסומת" style="--n:${ad.frames.length}">${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
+}
+
 function adBlock(pos, slot) {
+  const house = Object.entries(ADS).find(([, a]) => a.pos === pos);
+  if (house) return `<aside class="ad ad-${pos}" aria-label="פרסומת"><div class="ad-inner">${houseAd(...house)}</div></aside>`;
   const inner = ADSENSE_CLIENT && slot
     ? `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc(ADSENSE_CLIENT)}" data-ad-slot="${esc(slot)}" data-ad-format="horizontal" data-full-width-responsive="true"></ins><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`
     : `<div class="ad-ph">שטח פרסום · ${pos === 'top' ? 'עליון' : 'תחתון'}</div>`;
@@ -139,6 +149,7 @@ ${adBlock('top', ADSENSE_SLOT_TOP)}
     <button class="btn" id="fontMinus" title="הקטנת גופן" aria-label="הקטנת גופן">א−</button>
     <button class="btn" id="fontPlus" title="הגדלת גופן" aria-label="הגדלת גופן">א+</button>
     <span class="spacer"></span>
+    <a class="btn btn-wa" id="waShare" href="https://wa.me/?text=${encodeURIComponent('סליחות עדות המזרח — הסדר המלא, מנוקד, עם מעקב חי מהכותל 🙏\n' + SITE + '/?utm_source=whatsapp&utm_medium=share')}" target="_blank" rel="noopener" title="שיתוף האתר בוואטסאפ"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 4 3.5 1.5.6 2.1.7 2.8.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg> שיתוף</a>
     <button class="btn" id="themeBtn" title="מצב יום / לילה" aria-label="החלפת ערכת צבעים">מצב לילה</button>
   </div>
 </nav>

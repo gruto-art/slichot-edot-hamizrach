@@ -73,6 +73,10 @@ export function cleanSourceUrl(url) {
   const u = String(url || '').trim();
   if (!u) return '';
   if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 500) throw new Error('קישור לא תקין');
+  // רק יוטיוב: אחרת yt-dlp/ffmpeg בשרת היו ניגשים לכל כתובת (כולל רשת פנימית)
+  let host = '';
+  try { host = new URL(u).hostname.toLowerCase(); } catch { throw new Error('קישור לא תקין'); }
+  if (!/^((www|m|music)\.)?youtube\.com$|^youtu\.be$/.test(host)) throw new Error('מותרים רק קישורי YouTube');
   return u;
 }
 

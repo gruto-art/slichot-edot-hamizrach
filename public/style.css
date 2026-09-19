@@ -169,3 +169,40 @@ l:last-child{margin-bottom:0}
 .quickfacts dt{font-size:.74rem;letter-spacing:.06em;color:var(--gold);margin-bottom:.15rem}
 .quickfacts dd{margin:0;font-size:.98rem;color:var(--fg);font-weight:500}
 .quickfacts a{color:var(--fg)}
+
+/* ===== באנרים מונפשים (פרסומות בית) ===== */
+.had{
+  position:relative;display:flex;align-items:center;gap:.7rem;width:100%;min-height:56px;
+  padding:0 .9rem;border-radius:8px;text-decoration:none;overflow:hidden;
+  font-family:var(--body);color:#fff;
+}
+.ad-top .had{background:linear-gradient(110deg,#0b1f3a,#123a6b 55%,#0e7c66)}
+.ad-bottom .had{background:linear-gradient(110deg,#2a1a0c,#5a3a12 55%,#b0802a);color:#fff8e7}
+.had::after{ /* ברק חולף */
+  content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%);
+  transform:translateX(-120%);animation:adShine 5s ease-in-out infinite;pointer-events:none;
+}
+.alogo{flex:none;width:40px;height:40px;object-fit:contain;filter:drop-shadow(0 0 6px rgba(255,215,120,.6))}
+.afs{position:relative;flex:1;height:56px}
+.af{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:.4em;text-align:center;
+  font-size:clamp(.82rem,2.6vw,1.05rem);line-height:1.25;opacity:0;
+  animation:adFrame calc(var(--n) * 3s) infinite;animation-delay:calc(var(--i) * 3s);
+}
+.af b{font-weight:700}
+.af .ic{font-size:1.2em}
+.af .cta{display:inline-block;padding:.25em .8em;border-radius:99px;background:#25d366;color:#06311b;font-weight:700}
+.ad-bottom .af .cta{background:#f3c969;color:#3a2506}
+.atag{position:absolute;top:2px;inset-inline-start:6px;font-size:.6rem;opacity:.75;letter-spacing:.04em}
+@keyframes adFrame{
+  0%{opacity:0;transform:translateY(10px)}
+  4%,17%{opacity:1;transform:none}
+  20%,100%{opacity:0;transform:translateY(-10px)}
+}
+@keyframes adShine{0%,60%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+@media (prefers-reduced-motion:reduce){
+  .had::after{animation:none}
+  .af{animation:none}.af:last-child{opacity:1}
+}
+.btn-wa{display:inline-flex;align-items:center;gap:.35em;text-decoration:none;background:#25d366;color:#06311b;border-color:#25d366;font-weight:600}
+.btn-wa:hover{background:#1ebe5b}

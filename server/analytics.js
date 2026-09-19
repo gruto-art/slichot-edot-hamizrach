@@ -41,6 +41,8 @@ const hash = s => crypto.createHash('sha256').update(SALT + '|' + s).digest('hex
 
 const BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|headless|lighthouse|pingdom|gtmetrix|semrush|ahrefs|python-requests|curl|wget/i;
 
+export const isBot = (ua = '') => BOT_RE.test(ua || '');
+
 export function parseUA(ua = '') {
   const device = /iPad|Tablet/i.test(ua) ? 'tablet'
     : /Mobi|Android|iPhone|iPod/i.test(ua) ? 'mobile' : 'desktop';
@@ -196,4 +198,24 @@ export function liveFeed(limit = 40) {
     ref: r.ref_host || '(ישיר)', activeSec: Math.round((r.active_ms || 0) / 1000),
     scroll: r.max_scroll, live: !!r.used_live, returning: !!r.returning, country: r.country || ''
   }));
+}
+
+// צפיות/קליקים בפרסומות ושיתופים: היום, 7 ימים, ומאז ההתחלה
+export function adStats() {
+  const now = Date.now();
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const rows = db
+    ? db.prepare("SELECT ts,name,meta FROM events WHERE name IN ('ad_view','ad_click','share_whatsapp')").all()
+    : mem.events.filter(e => ['ad_view', 'ad_click', 'share_whatsapp'].includes(e.name));
+  const out = {};
+  const bucket = k => (out[k] ||= { views: 0, clicks: 0, viewsToday: 0, clicksToday: 0, views7d: 0, clicks7d: 0 });
+  for (const r of rows) {
+    let ad = 'share';
+    if (r.name !== 'share_whatsapp') { try { ad = String(JSON.parse(r.meta).ad || '?').slice(0, 20); } catch { ad = '?'; } }
+    const b = bucket(ad), kind = r.name === 'ad_view' ? 'views' : 'clicks';
+    b[kind]++;
+    if (r.ts >= +d0) b[kind + 'Today']++;
+    if (r.ts >= now - 7 * 86400e3) b[kind + '7d']++;
+  }
+  return out;
 }
