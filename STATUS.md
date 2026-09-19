@@ -142,6 +142,8 @@ RELAY_URL=http://188.34.167.205:9911 RELAY_TOKEN=<מה-skill> python3 ~/p.py
   (localStorage, נשמר גם ברענון; נספר כ-`ad_close`, עמודת "הסתרות" ב-`/admin`).
 - **מעקב**: קליק = `GET /go/:id` (נרשם בשרת, `ad_click`, מפנה רק לכתובת מ-ads.js); צפייה = חצי באנר נראה שנייה
   (`ad_view`); שיתוף = `share_whatsapp`. טבלה "פרסומות ושיתופים" ב-`/admin`.
+- **GA4**: `view_promotion` / `select_promotion` (promotion_id=tech|danel, creative_slot=top|bottom), `share`
+  (method=whatsapp), `ad_close`. לוגו דניאל: `public/ads/danel-logo.webp` (חיתוך מהלוגו המלא, 253×120), alt ומידות קבועות.
 - **כפתור שיתוף** בסרגל: `wa.me/?text=` עם קישור + `utm_source=whatsapp`.
 - **אבטחה** (בדיקה ע"י agy): השוואת טוקן בזמן קבוע, טוקן רק בכותרת (לא ב-query), הגבלת קצב לאדמין (20 כישלונות/15 דק׳ ל-IP)
   ולנקודות המדידה, XSS בלוח הבקרה (escape), `/api/live/source` רק יוטיוב (SSRF), עד 6 חיבורי SSE ל-IP,

@@ -25,7 +25,9 @@ export const ADS = {
     frameSec: 4.5,
     name: 'דניאל — הצעות נישואין',
     url: wa(DANEL_WA, 'היי, ראיתי את הפרסומת באתר הסליחות ואשמח לשמוע על עיצוב הצעת נישואין'),
-    logo: '/ads/danel-logo.png',
+    logo: '/ads/danel-logo.webp',
+    logoAlt: 'Daniel — עיצוב הצעות נישואין, Magic In Every Moment',
+    logoW: 101, logoH: 48,
     frames: [
       '<b>דניאל</b> · עיצוב הצעות נישואין',
       'הרגע שהיא תזכור לכל החיים <span class="ic">💍</span>',

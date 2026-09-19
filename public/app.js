@@ -156,15 +156,19 @@
   });
 
   // פרסומות: צפייה נספרת פעם אחת לעמוד, כשחצי מהבאנר נראה שנייה לפחות. הקליק נספר בשרת (/go/:id).
+  // Google Analytics 4: אירועי קידום מכירות הסטנדרטיים (view_promotion / select_promotion) ו-share
+  const ga = (name, params) => { try { if (typeof window.gtag === 'function') window.gtag('event', name, params); } catch {} };
+  const promo = a => ({ promotion_id: a.dataset.ad, promotion_name: a.dataset.adName, creative_slot: a.dataset.adSlot });
   document.querySelectorAll('a[data-ad]').forEach(a => {
     a.href = '/go/' + a.dataset.ad + '?s=' + encodeURIComponent(sid);
+    a.addEventListener('click', () => ga('select_promotion', promo(a)));
   });
   if ('IntersectionObserver' in window) {
     const seen = new Set(), timers = new Map();
     const io = new IntersectionObserver(entries => entries.forEach(e => {
       const id = e.target.dataset.ad;
       if (seen.has(id)) return;
-      if (e.isIntersecting) timers.set(id, setTimeout(() => { seen.add(id); io.unobserve(e.target); track('ad_view', { meta: { ad: id } }); }, 1000));
+      if (e.isIntersecting) timers.set(id, setTimeout(() => { seen.add(id); io.unobserve(e.target); track('ad_view', { meta: { ad: id } }); ga('view_promotion', promo(e.target)); }, 1000));
       else clearTimeout(timers.get(id));
     }), { threshold: 0.5 });
     document.querySelectorAll('a[data-ad]').forEach(a => io.observe(a));
@@ -180,13 +184,15 @@
     if (until > Date.now()) hideFor(until - Date.now()); else show();
     x.addEventListener('click', () => {
       store.set(key, Date.now() + AD_HIDE_MS);
-      track('ad_close', { meta: { ad: box.querySelector('[data-ad]')?.dataset.ad || box.dataset.slot } });
+      const a = box.querySelector('[data-ad]');
+      track('ad_close', { meta: { ad: a?.dataset.ad || box.dataset.slot } });
+      if (a) ga('ad_close', promo(a));
       hideFor(AD_HIDE_MS);
     });
   });
 
   const wa = document.getElementById('waShare');
-  if (wa) wa.addEventListener('click', () => track('share_whatsapp'));
+  if (wa) wa.addEventListener('click', () => { track('share_whatsapp'); ga('share', { method: 'whatsapp', content_type: 'website', item_id: location.pathname }); });
 
   addEventListener('scroll', () => {
     const h = document.body.scrollHeight - innerHeight;

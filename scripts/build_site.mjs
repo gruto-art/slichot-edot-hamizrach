@@ -26,8 +26,9 @@ const KEYWORDS = 'סליחות עדות המזרח, סליחות ספרדי, ס�
 // באנר מונפש: 4–5 מסכים מתחלפים בלולאה (CSS בלבד), מסומן "פרסומת", הקליק עובר דרך /go/:id למעקב
 function houseAd(id, ad) {
   const frames = ad.frames.map((f, i) => `<span class="af" style="--i:${i}">${f}</span>`).join('');
-  const logo = ad.logo ? `<img class="alogo" src="${esc(ad.logo)}" alt="" width="40" height="40">` : '';
-  return `<a class="had" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" aria-label="${esc(ad.name)} — פרסומת" style="--n:${ad.frames.length};--d:${ad.frameSec || 3}s">${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
+  // מידות קבועות נגד קפיצת תוכן (CLS); התחתון נטען בעצלות כדי לא לעכב את הטקסט
+  const logo = ad.logo ? `<img class="alogo" src="${esc(ad.logo)}" alt="${esc(ad.logoAlt || ad.name)}" width="${ad.logoW || 40}" height="${ad.logoH || 40}" decoding="async"${ad.pos === 'bottom' ? ' loading="lazy"' : ''}>` : '';
+  return `<a class="had" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" data-ad-name="${esc(ad.name)}" data-ad-slot="${esc(ad.pos)}" aria-label="${esc(ad.name)} — פרסומת" style="--n:${ad.frames.length};--d:${ad.frameSec || 3}s">${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
 }
 
 function adBlock(pos, slot) {
