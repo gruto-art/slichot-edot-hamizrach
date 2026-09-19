@@ -1,0 +1,188 @@
+{
+ "source": [
+  "elbaz",
+  "habusha",
+  "k0909",
+  "k0913",
+  "kotel"
+ ],
+ "unit": "words/sec",
+ "sections": {
+  "ashrei": {
+   "rate": 2.08,
+   "n": 9
+  },
+  "chatzi-kaddish": {
+   "rate": 1.08,
+   "n": 8
+  },
+  "ben-adam": {
+   "rate": 0.75,
+   "n": 20
+  },
+  "lecha-hashem-hatzedaka": {
+   "rate": 1.58,
+   "n": 48
+  },
+  "shevet-yehuda": {
+   "rate": 1.67,
+   "n": 9
+  },
+  "el-melech-1": {
+   "rate": 0.83,
+   "n": 16
+  },
+  "vayaavor-1": {
+   "rate": 0.42,
+   "n": 7
+  },
+  "rachamana": {
+   "rate": 1,
+   "n": 45
+  },
+  "vayaavor-2": {
+   "rate": 0.75,
+   "n": 9
+  },
+  "anshei-emuna": {
+   "rate": 1,
+   "n": 16
+  },
+  "el-melech-2": {
+   "rate": 0.42,
+   "n": 32
+  },
+  "tamahnu": {
+   "rate": 1.92,
+   "n": 8
+  },
+  "el-melech-3": {
+   "rate": 0.42,
+   "n": 33
+  },
+  "al-taas-kala": {
+   "rate": 1.33,
+   "n": 9
+  },
+  "ribono-shel-olam": {
+   "rate": 1.17,
+   "n": 35
+  },
+  "ashamnu": {
+   "rate": 1.08,
+   "n": 67
+  },
+  "harachamim-vehaslichot": {
+   "rate": 0.92,
+   "n": 5
+  },
+  "shema-yisrael": {
+   "rate": 0.17,
+   "n": 8
+  },
+  "erelei-maala": {
+   "rate": 0.5,
+   "n": 19
+  },
+  "hashem-melech": {
+   "rate": 0.67,
+   "n": 21
+  },
+  "likdushat-shimcha": {
+   "rate": 2.33,
+   "n": 6
+  },
+  "eloheinu-shebashamayim": {
+   "rate": 1.42,
+   "n": 90
+  },
+  "aneinu": {
+   "rate": 0.71,
+   "n": 41
+  },
+  "kaddish-1": {
+   "rate": 1.17,
+   "n": 21
+  },
+  "lemaancha-elohai": {
+   "rate": 0.67,
+   "n": 33
+  },
+  "echad-eloheinu": {
+   "rate": 2.17,
+   "n": 3
+  },
+  "adon-haslichot": {
+   "rate": 0.5,
+   "n": 10
+  },
+  "el-adir-shimcha": {
+   "rate": 1,
+   "n": 14
+  },
+  "hashem-chaneinu": {
+   "rate": 1.58,
+   "n": 7
+  },
+  "ase-lemaan-shimcha": {
+   "rate": 1.67,
+   "n": 14
+  },
+  "ase-lemaan": {
+   "rate": 1.58,
+   "n": 22
+  },
+  "deanei": {
+   "rate": 1.83,
+   "n": 16
+  },
+  "yah-shema": {
+   "rate": 0.5,
+   "n": 11
+  },
+  "el-melech-4": {
+   "rate": 0.47,
+   "n": 15
+  },
+  "atanu-lechalot": {
+   "rate": 0.75,
+   "n": 7
+  },
+  "marana": {
+   "rate": 1.17,
+   "n": 10
+  },
+  "elecha-nasati": {
+   "rate": 0.75,
+   "n": 29
+  },
+  "avinu-av-harachaman": {
+   "rate": 1.75,
+   "n": 3
+  },
+  "avinu-malkeinu": {
+   "rate": 0.58,
+   "n": 32
+  },
+  "shomer-yisrael": {
+   "rate": 1,
+   "n": 10
+  },
+  "kaddish-2": {
+   "rate": 1.67,
+   "n": 18
+  },
+  "bezochri": {
+   "rate": 0.33,
+   "n": 3
+  },
+  "chatzot-layla": {
+   "rate": 0.92,
+   "n": 3
+  },
+  "ledavid-elecha": {
+   "rate": 3.25,
+   "n": 6
+  }
+ }
+}

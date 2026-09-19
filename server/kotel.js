@@ -55,7 +55,10 @@ const CFG = {
   wpm: Number(process.env.KOTEL_WPM || 95),
   // כמה מילים מותר לדף להתקדם לבד מעבר לזיהוי האחרון. בלי תקרה הדף "בורח" קדימה
   // בזמן שירה ארוכה, והזיהוי הבא מושך אותו אחורה — וזה נראה כקפיצה.
-  driftCap: Number(process.env.KOTEL_DRIFT_CAP || 30)
+  driftCap: Number(process.env.KOTEL_DRIFT_CAP || 30),
+  // קצב ההתקדמות המשוערת לפי הפרק (data/pace_profile.json, מ-research/pace_profile.mjs) במקום
+  // קצב הזיהויים האחרונים. נמדד על 5 ערבים: נסיגות הדף 131→88, תזוזות מורגשות 215→175. 0 = כבוי.
+  paceProfile: process.env.KOTEL_PACE_PROFILE !== '0'
 };
 
 // יוטיוב חוסמת כתובות IP של מרכזי נתונים ("Sign in to confirm you're not a bot").
@@ -146,6 +149,11 @@ export class KotelEngine {
     this.clients = new Set();
     this.state = { mode: 'off', word: -1, confidence: 0, section: '', updatedAt: 0, source: '' };
     this.pace = [];   // זיהויים אחרונים, לחישוב קצב אמירה בפועל
+    this.slugOf = new Map();
+    for (const s of doc.sections) for (const p of s.paragraphs) for (const w of p.w) this.slugOf.set(w.i, s.slug);
+    try {
+      this.paceBySection = JSON.parse(fs.readFileSync(new URL('../data/pace_profile.json', import.meta.url), 'utf8')).sections;
+    } catch { this.paceBySection = {}; }
     this.proc = { ytdlp: null, ffmpeg: null };
     this.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kotel-'));
     this.lastClientAt = 0;
@@ -316,8 +324,15 @@ export class KotelEngine {
     return Math.max(20, Math.min(200, words / minutes));
   }
 
+  /** קצב ההתקדמות המשוערת: לפי הפרק הנוכחי אם נמדד, אחרת לפי הזיהויים האחרונים */
+  driftWpm() {
+    const r = CFG.paceProfile ? this.paceBySection[this.slugOf.get(this.state.word)]?.rate : 0;
+    return r ? r * 60 : this.observedWpm();
+  }
+
   setPosition(word, confidence, source) {
     if (word == null || word < 0) return;
+    this.driftAcc = 0;
     this.state.word = word;
     this.state.confidence = confidence;
     this.state.section = this.sectionFor(word);
@@ -611,7 +626,11 @@ export class KotelEngine {
     if (this.state.mode !== 'listening' || this.state.word < 0) return;
     const since = now - this.state.updatedAt;
     if (since > 6000 && since < 90000) {
-      const next = this.aligner.drift(this.state.word, 1000, this.observedWpm());
+      // שברי מילה מצטברים: בפרק איטי (פחות מחצי מילה לשנייה) עיגול לכל שנייה היה משאיר את הדף במקום
+      this.driftAcc = (this.driftAcc || 0) + this.driftWpm() / 60;
+      const adv = Math.floor(this.driftAcc);
+      this.driftAcc -= adv;
+      const next = adv ? this.aligner.drift(this.state.word, 1000, adv * 60) : this.state.word;
       const ahead = this.sttWord >= 0 ? this.aligner.toDense(next) - this.aligner.toDense(this.sttWord) : 0;
       if (next !== this.state.word && ahead <= CFG.driftCap) {
         this.state.word = next;
