@@ -173,6 +173,20 @@
     }), { threshold: 0.5 });
     document.querySelectorAll('a[data-ad]').forEach(a => io.observe(a));
   }
+  // החלפת מסכים בבאנרים: כל באנר בקצב שלו (data-fs). הסרת .on והחזרתה מפעילה מחדש את הנפשת הכניסה.
+  // לא מחליפים כשהלשונית מוסתרת או כשהבאנר הוסתר — חוסך מעבד בטלפון.
+  document.querySelectorAll('.had').forEach(a => {
+    const frames = [...a.querySelectorAll('.af')];
+    if (frames.length < 2) return;
+    let i = 0;
+    setInterval(() => {
+      if (document.hidden || a.closest('.ad-hidden')) return;
+      frames[i].classList.remove('on');
+      i = (i + 1) % frames.length;
+      frames[i].classList.add('on');
+    }, (Number(a.dataset.fs) || 3) * 1000);
+  });
+
   // הסתרת פרסומת: הכפתור מופיע אחרי 30 שניות, ההסתרה נשמרת ל-5 דקות (גם ברענון)
   const AD_SHOW_CLOSE_MS = 30e3, AD_HIDE_MS = 5 * 60e3;
   document.querySelectorAll('.ad[data-slot]').forEach(box => {

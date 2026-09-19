@@ -170,56 +170,149 @@ l:last-child{margin-bottom:0}
 .quickfacts dd{margin:0;font-size:.98rem;color:var(--fg);font-weight:500}
 .quickfacts a{color:var(--fg)}
 
-/* ===== באנרים מונפשים (פרסומות בית) ===== */
+/* ===== באנרים מונפשים (פרסומות בית) =====
+   מסך פעיל = .af.on (app.js מחליף מסכים לפי data-fs). הנפשות הכניסה מוגדרות על .af.on ולכן
+   מתחילות מחדש בכל פעם שהמסך חוזר. שתי שפות עיצוב: .had-tech (כהה, טכנולוגי) ו-.had-lux (שמפניה וזהב). */
 .had{
-  position:relative;display:flex;align-items:center;gap:.7rem;width:100%;min-height:56px;
-  padding:0 .9rem;border-radius:8px;text-decoration:none;overflow:hidden;
-  font-family:var(--body);color:#fff;
+  position:relative;isolation:isolate;display:flex;align-items:center;gap:.7rem;width:100%;min-height:56px;
+  padding:0 .9rem;border-radius:10px;text-decoration:none;overflow:hidden;font-family:var(--body);
 }
-.ad-top .had{background:linear-gradient(110deg,#0b1f3a,#123a6b 55%,#0e7c66)}
-.ad-bottom .had{background:linear-gradient(110deg,#2a1a0c,#5a3a12 55%,#b0802a);color:#fff8e7}
-.had::after{ /* ברק חולף */
-  content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%);
-  transform:translateX(-120%);animation:adShine 5s ease-in-out infinite;pointer-events:none;
-}
-.alogo{flex:none;height:48px;width:auto;border-radius:6px;box-shadow:0 0 10px rgba(255,215,120,.35)}
-@media(max-width:600px){.alogo{height:40px}}
-.afs{position:relative;flex:1;height:56px}
-.af{
-  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:.4em;text-align:center;
-  font-size:clamp(.82rem,2.6vw,1.05rem);line-height:1.25;opacity:0;
-  animation:adFrame calc(var(--n) * var(--d,3s)) infinite;animation-delay:calc(var(--i) * var(--d,3s));
-}
-.af b{font-weight:700}
-.af .ic{font-size:1.2em}
-.af .cta{display:inline-block;padding:.25em .8em;border-radius:99px;background:#25d366;color:#06311b;font-weight:700}
-.ad-bottom .af .cta{background:#f3c969;color:#3a2506}
-.atag{position:absolute;top:2px;inset-inline-start:6px;font-size:.6rem;opacity:.75;letter-spacing:.04em}
-@keyframes adFrame{
-  0%{opacity:0;transform:translateY(10px)}
-  4%,17%{opacity:1;transform:none}
-  20%,100%{opacity:0;transform:translateY(-10px)}
-}
-@keyframes adShine{0%,60%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
-@media (prefers-reduced-motion:reduce){
-  .had::after{animation:none}
-  .af{animation:none}.af:last-child{opacity:1}
-}
-.btn-wa{display:inline-flex;align-items:center;gap:.35em;text-decoration:none;background:#25d366;color:#06311b;border-color:#25d366;font-weight:600}
-.btn-wa:hover{background:#1ebe5b}
+.deco{position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.afs{position:relative;flex:1;height:56px;min-width:0}
+.af{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:.45em;text-align:center;
+  opacity:0;visibility:hidden;transition:opacity .35s ease,visibility 0s .35s;white-space:nowrap}
+.af.on{opacity:1;visibility:visible;transition:opacity .35s ease}
+.af i{font-style:normal;display:inline-block}
+.atag{position:absolute;top:2px;inset-inline-start:7px;font-size:.58rem;opacity:.7;letter-spacing:.05em;z-index:2}
+.alogo{flex:none;height:48px;width:auto;border-radius:6px;position:relative;z-index:1}
 
+/* ---------- טכנולוגיה ---------- */
+.had-tech{background:radial-gradient(120% 160% at 85% 0%,#1b2f6b 0%,#0a1330 45%,#050914 100%);color:#e6f0ff;
+  font-family:"Rubik",var(--body);box-shadow:inset 0 0 0 1px rgba(110,170,255,.25)}
+.had-tech .grid{position:absolute;inset:-20px;background-image:linear-gradient(rgba(90,160,255,.13) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(90,160,255,.13) 1px,transparent 1px);background-size:18px 18px;animation:gridMove 5s linear infinite}
+.had-tech .orb{position:absolute;width:180px;height:180px;top:-60px;left:10%;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,220,255,.35),rgba(140,90,255,.18) 45%,transparent 70%);filter:blur(6px);
+  animation:orbMove 8s ease-in-out infinite alternate}
+.had-tech .scan{position:absolute;top:0;bottom:0;width:2px;right:0;background:linear-gradient(transparent,#5ff2ff,transparent);
+  box-shadow:0 0 14px 3px rgba(95,242,255,.55);animation:scan 3.6s cubic-bezier(.6,0,.4,1) infinite}
+@keyframes gridMove{to{transform:translate(-18px,18px)}}
+@keyframes orbMove{to{transform:translateX(420%)}}
+@keyframes scan{0%{transform:translateX(0);opacity:0}10%{opacity:1}80%{opacity:1}100%{transform:translateX(-1100px);opacity:0}}
+
+/* 1. הקלדה עם סמן */
+.fx-type{display:inline-block;overflow:hidden;max-width:0;font-weight:800;font-size:clamp(.95rem,3.2vw,1.2rem);
+  border-left:2px solid #5ff2ff;padding-left:3px}
+.af.on .fx-type{animation:typeIn 1.25s steps(26,end) .1s forwards,caret .55s step-end infinite}
+@keyframes typeIn{to{max-width:24em}}
+@keyframes caret{50%{border-left-color:transparent}}
+/* 2. צ'יפים קופצים */
+.fx-chips{display:flex;gap:.35em;flex-wrap:nowrap}
+.fx-chips i{padding:.28em .7em;border-radius:99px;background:rgba(95,242,255,.1);border:1px solid rgba(95,242,255,.45);
+  font-weight:500;font-size:clamp(.62rem,2.3vw,.9rem);opacity:0}
+.af.on .fx-chips i{animation:pop .55s cubic-bezier(.3,1.7,.5,1) calc(var(--k)*.22s) both}
+@keyframes pop{from{opacity:0;transform:scale(.3) translateY(10px)}to{opacity:1;transform:none}}
+/* 3. כניסה משני הצדדים */
+.fx-split{display:flex;align-items:center;gap:.6em;font-size:clamp(.72rem,2.6vw,1rem)}
+.fx-split b{font-weight:800}
+.fx-split em{font-style:normal;color:#7fe7ff;font-weight:500;padding-inline-start:.6em;border-inline-start:1px solid rgba(127,231,255,.5)}
+.af.on .fx-split b{animation:fromR .6s cubic-bezier(.2,.9,.3,1.2) both}
+.af.on .fx-split em{animation:fromL .6s cubic-bezier(.2,.9,.3,1.2) .25s both}
+@keyframes fromR{from{opacity:0;transform:translateX(60px)}}
+@keyframes fromL{from{opacity:0;transform:translateX(-60px)}}
+@media(max-width:600px){.fx-split{flex-direction:column;gap:.15em;line-height:1.15}.fx-split em{border:0;padding:0}}
+/* 4. מילים זוהרות עם ברק נע */
+.fx-glow{font-weight:800;font-size:clamp(.9rem,3vw,1.18rem)}
+.fx-glow i{background:linear-gradient(90deg,#7fd3ff,#ffffff,#b69bff,#7fd3ff);background-size:300% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.af.on .fx-glow i{animation:wordUp .5s cubic-bezier(.2,.8,.3,1) calc(var(--k)*.1s) both,shimmer 2.2s linear infinite}
+@keyframes wordUp{from{opacity:0;transform:translateY(14px);filter:blur(4px)}}
+@keyframes shimmer{to{background-position:-300% 0}}
+/* 5. קריאה לפעולה: גלולת וואטסאפ עם גלי דופק */
+.had-tech .fx-cta{gap:.8em}
+.had-tech .fx-cta .pill{position:relative;padding:.4em 1em;border-radius:99px;background:#25d366;color:#04301a;font-weight:800;
+  font-size:clamp(.8rem,2.7vw,1rem);box-shadow:0 0 18px rgba(37,211,102,.5)}
+.had-tech .fx-cta .ring{position:absolute;inset:0;border-radius:inherit;border:2px solid #25d366;animation:ring 1.4s ease-out infinite}
+.had-tech .fx-cta .num{font-weight:800;letter-spacing:.06em;direction:ltr;font-size:clamp(.8rem,2.7vw,1.05rem);color:#bff6ff}
+.af.on .fx-cta{animation:zoomIn .5s cubic-bezier(.3,1.5,.5,1) both}
+@keyframes ring{from{transform:scale(1);opacity:.9}to{transform:scale(1.35,1.7);opacity:0}}
+@keyframes zoomIn{from{opacity:0;transform:scale(.6)}}
+@media(max-width:420px){.had-tech .fx-cta .num{display:none}}
+
+/* ---------- יוקרה (דניאל) ---------- */
+.had-lux{background:linear-gradient(110deg,#fffaf0 0%,#f6e9cf 45%,#e8cf9c 100%);color:#5a3d10;
+  box-shadow:inset 0 0 0 1px #d8b465,inset 0 0 22px rgba(201,160,80,.25);font-family:"Bellefair","Frank Ruhl Libre",serif}
+.had-lux .alogo{box-shadow:0 2px 10px rgba(150,110,40,.25)}
+.had-lux .petal{position:absolute;top:-16px;left:calc(var(--p) * 22% + 12%);width:9px;height:13px;border-radius:60% 0 60% 0;
+  background:radial-gradient(circle at 30% 30%,#fffbe8,#efd28f 70%);opacity:.85;
+  animation:petal 7.5s linear calc(var(--p) * -1.9s) infinite}
+.had-lux .spark{position:absolute;top:calc(20% + var(--p) * 22%);left:calc(30% + var(--p) * 21%);width:10px;height:10px;background:#c9982f;
+  clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%);
+  animation:twinkle 2.6s ease-in-out calc(var(--p) * -.9s) infinite}
+@keyframes petal{0%{transform:translate(0,0) rotate(0)}50%{transform:translate(14px,40px) rotate(160deg)}100%{transform:translate(-6px,90px) rotate(320deg)}}
+@keyframes twinkle{0%,100%{transform:scale(0) rotate(0);opacity:0}50%{transform:scale(1) rotate(90deg);opacity:.9}}
+
+/* 1. מילים עולות */
+.fx-rise{font-size:clamp(1.05rem,3.6vw,1.45rem);letter-spacing:.02em}
+.af.on .fx-rise i{animation:rise .8s cubic-bezier(.2,.8,.2,1) calc(var(--k)*.16s) both}
+@keyframes rise{from{opacity:0;transform:translateY(22px);letter-spacing:.3em;filter:blur(3px)}}
+/* 2. מטושטש לחד + טבעת נופלת */
+.fx-blur{font-size:clamp(1rem,3.3vw,1.35rem)}
+.af.on .fx-blur{animation:unblur .9s ease both}
+.fx-blur .ring-ic{display:inline-block}
+.af.on .fx-blur .ring-ic{animation:drop .9s cubic-bezier(.3,1.6,.5,1) .5s both}
+@keyframes unblur{from{opacity:0;filter:blur(10px);transform:scale(1.08)}}
+@keyframes drop{from{opacity:0;transform:translateY(-30px) rotate(-30deg)}}
+/* 3. מילים עם קו זהב שנמתח */
+.fx-line{display:flex;gap:1.1em;font-size:clamp(.85rem,2.9vw,1.15rem)}
+.had-lux .atag{inset-inline-start:auto;inset-inline-end:46px}
+.fx-line i{position:relative;padding-bottom:3px}
+.fx-line i::after{content:"";position:absolute;right:0;left:0;bottom:0;height:1.5px;background:linear-gradient(90deg,transparent,#b8862f,transparent);transform:scaleX(0)}
+.af.on .fx-line i{animation:fadeUp .6s ease calc(var(--k)*.35s) both}
+.af.on .fx-line i::after{animation:draw .7s ease calc(var(--k)*.35s + .4s) forwards}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}}
+@keyframes draw{to{transform:scaleX(1)}}
+/* 4. כתב יד נחשף */
+.fx-script{font-family:"Great Vibes",cursive;font-size:clamp(1.5rem,5vw,2.1rem);direction:ltr;
+  background:linear-gradient(90deg,#8a5d14,#d9a940,#8a5d14);-webkit-background-clip:text;background-clip:text;color:transparent;
+  padding:0 .2em;clip-path:inset(0 100% 0 0)}
+.af.on .fx-script{animation:write 1.8s cubic-bezier(.5,0,.3,1) .1s forwards}
+@keyframes write{to{clip-path:inset(0 -5% 0 0)}}
+/* 5. קריאה לפעולה: גלולת זהב עם ברק ודופק */
+.had-lux .fx-cta .pill{position:relative;overflow:hidden;padding:.35em 1.2em;border-radius:99px;
+  background:linear-gradient(135deg,#7a5518,#c09038 55%,#7a5518);color:#fff8e8;font-size:clamp(.9rem,3vw,1.1rem);
+  box-shadow:0 3px 12px rgba(122,85,24,.35)}
+.had-lux .fx-cta .pill::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);transform:translateX(-120%)}
+.af.on .had-lux .fx-cta,.had-lux .af.on .fx-cta{animation:zoomIn .6s cubic-bezier(.3,1.5,.5,1) both}
+.had-lux .af.on .fx-cta .pill{animation:beat 1.2s ease-in-out .6s infinite}
+.had-lux .af.on .fx-cta .pill::after{animation:shine 1.8s ease-in-out .4s infinite}
+@keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.06)}30%{transform:scale(1)}45%{transform:scale(1.04)}}
+@keyframes shine{0%{transform:translateX(-120%)}60%,100%{transform:translateX(120%)}}
+
+@media(max-width:600px){.alogo{height:40px}.had{gap:.45rem;padding:0 .6rem}}
+@media (prefers-reduced-motion:reduce){
+  .had *,.had *::before,.had *::after{animation:none !important}
+  .fx-type{max-width:none;border:0}
+  .fx-script{clip-path:none}
+  .fx-line i::after{transform:none}
+}
 /* כפתור הסתרה: מופיע אחרי חצי דקה, מסתיר את הבאנר ל-5 דקות */
 .ad-inner{position:relative}
 .ad-x{
-  position:absolute;top:50%;inset-inline-end:14px;transform:translateY(-50%);z-index:2;
+  position:absolute;top:50%;inset-inline-end:14px;transform:translateY(-50%);z-index:3;
   width:26px;height:26px;border-radius:50%;border:0;cursor:pointer;
   background:rgba(0,0,0,.55);color:#fff;font-size:17px;line-height:26px;padding:0;
 }
 .ad-x:hover{background:rgba(0,0,0,.8)}
 .ad.ad-hidden{display:none}
 .ad-top.ad-hidden ~ .toolbar{top:0}
+.btn-wa{display:inline-flex;align-items:center;gap:.35em;text-decoration:none;background:#25d366;color:#06311b;border-color:#25d366;font-weight:600}
+.btn-wa:hover{background:#1ebe5b}
+
+
 
 /* דף התרת קללות */
 .hk-note{margin-top:1.1rem;padding:.7rem 1rem;border:1px solid var(--gold-soft);border-radius:10px;background:color-mix(in srgb,var(--gold) 8%,transparent)}
 .prose p.hk-dir{margin-bottom:.6rem}
 a.btn{text-decoration:none}
+@media(max-width:420px){.fx-chips{gap:.2em}.fx-chips i{padding:.22em .45em;font-size:.6rem}}

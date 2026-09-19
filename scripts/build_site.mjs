@@ -25,10 +25,11 @@ const KEYWORDS = 'סליחות עדות המזרח, סליחות ספרדי, ס�
 
 // באנר מונפש: 4–5 מסכים מתחלפים בלולאה (CSS בלבד), מסומן "פרסומת", הקליק עובר דרך /go/:id למעקב
 function houseAd(id, ad) {
-  const frames = ad.frames.map((f, i) => `<span class="af" style="--i:${i}">${f}</span>`).join('');
+  // המסך הראשון גלוי גם בלי JS; app.js מחליף מסכים ומפעיל מחדש את הנפשת הכניסה של כל אחד
+  const frames = ad.frames.map((f, i) => `<span class="af${i ? '' : ' on'}">${f}</span>`).join('');
   // מידות קבועות נגד קפיצת תוכן (CLS); התחתון נטען בעצלות כדי לא לעכב את הטקסט
   const logo = ad.logo ? `<img class="alogo" src="${esc(ad.logo)}" alt="${esc(ad.logoAlt || ad.name)}" width="${ad.logoW || 40}" height="${ad.logoH || 40}" decoding="async"${ad.pos === 'bottom' ? ' loading="lazy"' : ''}>` : '';
-  return `<a class="had" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" data-ad-name="${esc(ad.name)}" data-ad-slot="${esc(ad.pos)}" aria-label="${esc(ad.name)} — פרסומת" style="--n:${ad.frames.length};--d:${ad.frameSec || 3}s">${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
+  return `<a class="had had-${esc(ad.theme || 'plain')}" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" data-ad-name="${esc(ad.name)}" data-ad-slot="${esc(ad.pos)}" data-fs="${ad.frameSec || 3}" aria-label="${esc(ad.name)} — פרסומת"><span class="deco" aria-hidden="true">${ad.deco || ''}</span>${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
 }
 
 function adBlock(pos, slot) {
@@ -134,7 +135,7 @@ ${GSC_TOKEN ? `<meta name="google-site-verification" content="${esc(GSC_TOKEN)}"
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Noto+Serif+Hebrew:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Noto+Serif+Hebrew:wght@400;500;600&family=Rubik:wght@500;800&family=Bellefair&family=Great+Vibes&display=swap">
 <link rel="stylesheet" href="/style.css?v=${ver('style.css')}">
 <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
 ${adsHead}${ga}
@@ -242,7 +243,7 @@ const hkHtml = `<!DOCTYPE html>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Noto+Serif+Hebrew:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Noto+Serif+Hebrew:wght@400;500;600&family=Rubik:wght@500;800&family=Bellefair&family=Great+Vibes&display=swap">
 <link rel="stylesheet" href="/style.css?v=${ver('style.css')}">
 <script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: HK_TITLE, description: HK_DESC, inLanguage: 'he', url: SITE + '/hatarat-kelalot', isPartOf: { '@type': 'WebSite', name: 'סליחות עדות המזרח', url: SITE } })}</script>
 ${ga}
