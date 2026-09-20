@@ -540,7 +540,9 @@ export class KotelEngine {
           .replace(/\s+/g, ' ').slice(0, 160);
         reject(new Error(detail || 'exit ' + code));
       });
-      this.proc.ytdlp = p;
+      // בחימום מקדים אין קליטה: אם נרשום את התהליך כאן, הכיבוי בהיעדר מאזינים (_tick)
+      // יהרוג אותו באמצע — וזה בדיוק מה שהחימום בא למנוע.
+      if (!this.warming) this.proc.ytdlp = p;
     });
   }
 
