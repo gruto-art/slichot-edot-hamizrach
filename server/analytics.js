@@ -181,7 +181,10 @@ export function stats() {
     const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (29 - i));
     const from = +d, to = from + 86400e3;
     const b = rows.filter(r => r.started >= from && r.started < to);
-    return { date: d.toISOString().slice(0, 10), sessions: b.length, visitors: uniq(b) };
+    // תווית לפי התאריך המקומי (שעון ישראל): toISOString היה מזיז יום אחורה, כי חצות
+    // בישראל היא 21:00 UTC של היום הקודם.
+    const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { date: label, sessions: b.length, visitors: uniq(b) };
   });
 
   return {
