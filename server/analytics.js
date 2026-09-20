@@ -150,6 +150,27 @@ export function stats() {
   };
   const avg = (list, key) => list.length ? Math.round(list.reduce((s, r) => s + (r[key] || 0), 0) / list.length) : 0;
 
+  // פירוט לפי דף (הבית, התרת קללות): כניסות, מבקרים, זמן קריאה ועומק גלילה
+  const pageOf = r => {
+    const p = (r.path || '/').replace(/\/+$/, '') || '/';
+    return p === '/index.html' ? '/' : p;
+  };
+  const pages = (() => {
+    const m = new Map();
+    for (const r of rows) {
+      const k = pageOf(r);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    }
+    return [...m].sort((a, b) => b[1].length - a[1].length).slice(0, 10).map(([k, list]) => ({
+      k, v: list.length, visitors: uniq(list),
+      today: list.filter(r => r.started >= +startOfDay).length,
+      last7d: list.filter(r => r.started >= now - 7 * 86400e3).length,
+      avgActiveSec: Math.round(avg(list, 'active_ms') / 1000),
+      avgScroll: avg(list, 'max_scroll')
+    }));
+  })();
+
   // גרף 24 שעות אחרונות לפי שעה
   const hourly = Array.from({ length: 24 }, (_, i) => {
     const from = now - (23 - i) * 3600e3, to = from + 3600e3;
@@ -183,7 +204,8 @@ export function stats() {
       devices: top('device', rows), os: top('os', rows), browsers: top('browser', rows),
       campaigns: top('utm_campaign', rows.filter(r => r.utm_campaign)),
       sources: top('utm_source', rows.filter(r => r.utm_source)),
-      countries: top('country', rows.filter(r => r.country))
+      countries: top('country', rows.filter(r => r.country)),
+      pages
     },
     hourly, daily,
     bots: db ? db.prepare('SELECT COUNT(*) c FROM sessions WHERE bot=1').get().c : 0,
@@ -195,7 +217,7 @@ export function liveFeed(limit = 40) {
   const rows = all().sort((a, b) => b.last - a.last).slice(0, limit);
   return rows.map(r => ({
     at: r.started, last: r.last, device: r.device, os: r.os, browser: r.browser,
-    ref: r.ref_host || '(ישיר)', activeSec: Math.round((r.active_ms || 0) / 1000),
+    ref: r.ref_host || '(ישיר)', path: r.path || '/', activeSec: Math.round((r.active_ms || 0) / 1000),
     scroll: r.max_scroll, live: !!r.used_live, returning: !!r.returning, country: r.country || ''
   }));
 }

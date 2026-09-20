@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { KotelEngine } from '../server/kotel.js';
+import { KotelEngine, inWindow, beforeWindow } from '../server/kotel.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = (process.env.FEED_TARGET || 'https://slichot.onrender.com').replace(/\/$/, '');
@@ -91,7 +91,15 @@ async function youtubeDelay() {
       if (lines[i].startsWith('#EXT-X-PROGRAM-DATE-TIME:')) last = Date.parse(lines[i].slice(25));
       else if (lines[i].startsWith('#EXTINF:') && last) dur = parseFloat(lines[i].slice(8)) * 1000;
     }
-    if (last) log(`עיכוב השידור ביוטיוב (מהמצלמה עד שהקול זמין לנו): ~${sec(Date.now() - (last + dur))} שנ׳`);
+    // המקודד בכותל מטביע חותמת שגויה בדיוק בשעה: ב-20/9 נמדד קבוע ~3600 שנ׳, בעוד
+    // שהשידור בפועל היה בקצה החי (הוא נסגר באותה דקה שבה הקול שלנו הגיע לסופו).
+    // לכן ערך גדול מדווח כחותמת לא אמינה ולא כעיכוב אמיתי.
+    if (last) {
+      const d = Date.now() - (last + dur);
+      log(d > 300000
+        ? `חותמת הזמן של השידור ביוטיוב מפגרת ב-${(d / 3600000).toFixed(1)} שעות בערך — כנראה שעון שגוי במקודד, לא עיכוב אמיתי (~${sec(d)} שנ׳)`
+        : `עיכוב השידור ביוטיוב (מהמצלמה עד שהקול זמין לנו): ~${sec(d)} שנ׳`);
+    }
   } catch (e) { log('מדידת עיכוב יוטיוב נכשלה:', e.message); }
 }
 setInterval(youtubeDelay, 60000);
@@ -136,6 +144,43 @@ async function beat() {
   }
 }
 
+/* חימום מקדים: יוטיוב מציבה בדיקת בוט ("Sign in to confirm you're not a bot") על שידור
+   חי חדש, והמנוע מכפיל את ההשהיה בין ניסיונות עד 10 דקות. בערב יום כיפור זה עלה ב-20
+   הדקות הראשונות של הסליחות. לכן, מרבע שעה לפני החלון ולאורכו, כל עוד איננו קולטים,
+   פותרים את כתובת השידור מדי דקה — רק yt-dlp, בלי ffmpeg ובלי תמלול, כלומר בלי עלות.
+   ההצלחה מאפסת את מונה הכישלונות, כדי שהמאזין הראשון ייקלט מיד. */
+const WARMUP_MIN = Number(process.env.KOTEL_WARMUP_MIN || 15);
+const WARMUP_MS = Number(process.env.KOTEL_WARMUP_MS || 60000);
+let warmOk = false;
+
+async function warmup() {
+  if (WARMUP_MIN <= 0) return;
+  if (engine.state.mode === 'listening' || engine.proc.ffmpeg || engine.pendingStart) return;
+  if (engine.clients.size) return;   // יש מאזינים — הקליטה עצמה תפתח את השידור
+  if (!inWindow() && !beforeWindow(WARMUP_MIN)) { warmOk = false; return; }
+  try {
+    if (!engine.override) {
+      const changed = await engine._refreshChannel();
+      if (changed) { warmOk = false; engine._switchSource(); }
+    }
+    const { url, kind, title } = engine.sourceInfo();
+    if (!url) return;
+    engine.warming = true;
+    try { await engine._resolveMediaUrl(url); } finally { engine.warming = false; }
+    engine.failures = 0;
+    engine.retryAfter = 0;
+    if (!warmOk) {
+      warmOk = true;
+      log(`חימום: השידור נפתח בהצלחה (${kind}${title ? ' — ' + title : ''}) — המאזין הראשון ייקלט מיד`);
+    }
+  } catch (e) {
+    warmOk = false;
+    log('חימום: יוטיוב עדיין לא נותנת את השידור —', String(e.message).slice(0, 160));
+  }
+}
+
 log(`מזין פעיל → ${TARGET}`);
 beat();
 setInterval(beat, BEAT_MS);
+warmup();
+setInterval(warmup, WARMUP_MS);

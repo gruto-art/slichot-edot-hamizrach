@@ -102,6 +102,12 @@ export function inWindow(now = new Date(), win = CFG.window) {
   return from <= to ? mins >= from && mins < to : mins >= from || mins < to;
 }
 
+/** נכון כשעדיין לא נכנסנו לחלון הסליחות, אבל ניכנס אליו בתוך `minutes` דקות. */
+export function beforeWindow(minutes, now = new Date(), win = CFG.window) {
+  if (!/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(win || '')) return false;
+  return !inWindow(now, win) && inWindow(new Date(+now + minutes * 60000), win);
+}
+
 const isDirectStream = url => /\.m3u8(\?|$)|\.mpd(\?|$)|^rtmps?:/i.test(url);
 // קובץ מקומי (לבדיקות): נקרא בקצב אמיתי, כאילו היה שידור
 const isLocalFile = url => !/^[a-z]+:/i.test(url) && fs.existsSync(url);
@@ -506,7 +512,8 @@ export class KotelEngine {
         return r;
       } catch (e) {
         errors.push(`${strat.name}: ${e.message}`);
-        if (!this.pendingStart) break;
+        // בחימום מקדים אין קליטה פעילה, ובכל זאת רוצים לנסות את כל הנגנים
+        if (!this.pendingStart && !this.warming) break;
       }
     }
     throw new Error(errors.join(' ;; ').slice(0, 600));

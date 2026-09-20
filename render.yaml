@@ -8,6 +8,9 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      # שעון ישראל — כדי ש"היום" בלוח הבקרה יתחיל בחצות בישראל ולא ב-UTC
+      - key: TZ
+        value: Asia/Jerusalem
       - key: SITE_URL
         value: https://slichot.onrender.com
       - key: ADMIN_TOKEN
