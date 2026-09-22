@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { KotelEngine, inWindow, beforeWindow } from '../server/kotel.js';
+import { KotelEngine, inWindow, beforeWindow, kotelEnabled } from '../server/kotel.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = (process.env.FEED_TARGET || 'https://slichot.onrender.com').replace(/\/$/, '');
@@ -154,7 +154,7 @@ const WARMUP_MS = Number(process.env.KOTEL_WARMUP_MS || 60000);
 let warmOk = false;
 
 async function warmup() {
-  if (WARMUP_MIN <= 0) return;
+  if (WARMUP_MIN <= 0 || !kotelEnabled) return;
   if (engine.state.mode === 'listening' || engine.proc.ffmpeg || engine.pendingStart) return;
   if (engine.clients.size) return;   // יש מאזינים — הקליטה עצמה תפתח את השידור
   if (!inWindow() && !beforeWindow(WARMUP_MIN)) { warmOk = false; return; }
@@ -179,6 +179,7 @@ async function warmup() {
   }
 }
 
+if (!kotelEnabled) log('מנעול העונה פעיל (KOTEL_ENABLED אינו 1): אין קליטה ואין תמלול — המזין רק מדווח לאתר.');
 log(`מזין פעיל → ${TARGET}`);
 beat();
 setInterval(beat, BEAT_MS);

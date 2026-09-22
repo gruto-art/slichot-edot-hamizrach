@@ -7,3 +7,4 @@ public/sitemap.xml
 public/robots.txt
 data/.transcripts-*
 *.stt-*.json
+.env.disabled-*

@@ -34,6 +34,9 @@ const CFG = {
   window: process.env.KOTEL_WINDOW ?? '00:15-02:00',
   // המצלמה הקבועה אינה הסליחות, ותמלולה עולה כסף לחינם — רק אם מבקשים במפורש
   cameraFallback: process.env.KOTEL_CAMERA_FALLBACK === '1',
+  // מנעול עונה: מחוץ לימי הסליחות אין קליטה ואין תמלול בשום מצב, גם אם נשארו
+  // מפתחות בסביבה. להדלקה בשנה הבאה: KOTEL_ENABLED=1 (בשרת ובמזין).
+  enabled: process.env.KOTEL_ENABLED === '1',
   // 91 = 144p עם אודיו (~290kbps) — הזול ביותר לקליטה; נופל חזרה לאודיו בלבד אם קיים
   ytFormat: process.env.KOTEL_YTDLP_FORMAT || '91/bestaudio*/worst',
   // כתובת HLS ישירה נקלטת בלי yt-dlp כלל (חוסך את בדיקת הבוטים של יוטיוב)
@@ -101,6 +104,9 @@ export function inWindow(now = new Date(), win = CFG.window) {
   const mins = +parts.find(p => p.type === 'hour').value * 60 + +parts.find(p => p.type === 'minute').value;
   return from <= to ? mins >= from && mins < to : mins >= from || mins < to;
 }
+
+/** מנעול העונה: קליטה ותמלול כבויים לחלוטין עד שמדליקים KOTEL_ENABLED=1 */
+export const kotelEnabled = CFG.enabled;
 
 /** נכון כשעדיין לא נכנסנו לחלון הסליחות, אבל ניכנס אליו בתוך `minutes` דקות. */
 export function beforeWindow(minutes, now = new Date(), win = CFG.window) {
@@ -303,6 +309,7 @@ export class KotelEngine {
 
   _idleMessage() {
     if (this.remoteAlive() && this.remote.message) return this.remote.message;
+    if (!CFG.enabled) return 'המעקב החי מהכותל חוזר בימי הסליחות הבאים. עד אז אפשר לקרוא בקצב שלך.';
     if (this._ended()) return 'הקלטת הבדיקה הסתיימה. אפשר לקרוא בקצב שלך.';
     if (!this._hasKey()) return 'המעקב החי ממתין להגדרת מנוע התמלול. אפשר לקרוא בקצב שלך.';
     if (this._auto() && !inWindow()) {
@@ -390,7 +397,7 @@ export class KotelEngine {
   start(reason = 'manual') {
     if (this.state.mode === 'manual') return;
     if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting, this.remote.message);
-    if (!this._hasKey() || (this._auto() && !inWindow()) || this._ended()) {
+    if (!CFG.enabled || !this._hasKey() || (this._auto() && !inWindow()) || this._ended()) {
       this.state.mode = 'off';
       this.broadcast('status', { state: 'idle', message: this._idleMessage() });
       return;
