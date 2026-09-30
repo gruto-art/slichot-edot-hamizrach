@@ -319,8 +319,35 @@
     });
   });
 
+  /* ---------- שיתוף: וואטסאפ, תפריט השיתוף של הטלפון (אינסטגרם, טלגרם...), העתקת קישור ----------
+     כל לחיצה נמדדת לפי סוג; בתפריט הטלפון נמדד גם אם השיתוף הושלם או בוטל */
+  const shareUrl = src => `${location.origin}/?utm_source=${src}&utm_medium=share`;
+  const toast = msg => {
+    const t = $('#shareToast'); if (!t) return;
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200);
+  };
   const wa = document.getElementById('waShare');
   if (wa) wa.addEventListener('click', () => { track('share_whatsapp'); ga('share', { method: 'whatsapp', content_type: 'website', item_id: location.pathname }); });
+  const more = document.getElementById('nativeShare');
+  if (more && navigator.share) {
+    more.hidden = false;
+    more.addEventListener('click', () => {
+      navigator.share({ title: document.title, text: 'סליחות עדות המזרח — הסדר המלא, מנוקד, עם מעקב חי מהכותל 🙏', url: shareUrl('native') })
+        .then(() => { track('share_native', { meta: { done: true } }); ga('share', { method: 'native', content_type: 'website', item_id: location.pathname }); })
+        .catch(e => { if (e && e.name === 'AbortError') track('share_native', { meta: { done: false } }); });
+    });
+  }
+  $('#copyLink')?.addEventListener('click', async () => {
+    const url = shareUrl('copy');
+    let ok = false;
+    try { await navigator.clipboard.writeText(url); ok = true; } catch {
+      try { const i = document.createElement('input'); i.value = url; document.body.appendChild(i); i.select(); ok = document.execCommand('copy'); i.remove(); } catch {}
+    }
+    toast(ok ? 'הקישור הועתק ✓ אפשר להדביק באינסטגרם או בכל מקום' : url);
+    track('share_copy', { meta: { ok } });
+    ga('share', { method: 'copy_link', content_type: 'website', item_id: location.pathname });
+  });
 
   addEventListener('scroll', () => {
     const h = document.body.scrollHeight - innerHeight;

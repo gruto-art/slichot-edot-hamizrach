@@ -322,8 +322,16 @@ l:last-child{margin-bottom:0}
 .ad-x:hover{background:rgba(0,0,0,.8)}
 .ad.ad-hidden{display:none}
 .ad-top.ad-hidden ~ .toolbar{top:0}
-.btn-wa{display:inline-flex;align-items:center;gap:.35em;text-decoration:none;background:#25d366;color:#06311b;border-color:#25d366;font-weight:600}
-.btn-wa:hover{background:#1ebe5b}
+.share-trio{position:relative;display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--rule);border-radius:999px;background:var(--card)}
+.sh{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;border:0;padding:0;cursor:pointer;background:transparent;color:var(--fg);text-decoration:none;transition:transform .15s,background .15s}
+.sh:hover{transform:translateY(-1px);color:var(--gold)}
+.sh[hidden]{display:none}
+.sh-wa{background:#25d366;color:#06311b}
+.sh-wa:hover{background:#1ebe5b;color:#06311b}
+.sh-more{background:radial-gradient(circle at 30% 107%,#fdf497 0%,#fd5949 45%,#d6249f 60%,#285aeb 90%);color:#fff}
+.sh-more:hover{color:#fff}
+.sh-toast{position:absolute;top:calc(100% + 6px);inset-inline-start:0;width:max-content;max-width:min(260px,calc(100vw - 32px));line-height:1.5;background:var(--fg);color:var(--paper);font-size:.74rem;padding:.3rem .6rem;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .2s}
+.sh-toast.show{opacity:1}
 
 
 

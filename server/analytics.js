@@ -218,7 +218,17 @@ export function stats() {
 
 export function liveFeed(limit = 40) {
   const rows = all().sort((a, b) => b.last - a.last).slice(0, limit);
-  return rows.map(r => ({
+  const shares = new Map();
+  const ids = new Set(rows.map(r => r.sid));
+  const ev = db
+    ? db.prepare(`SELECT sid,name,meta FROM events WHERE name LIKE 'share_%' AND sid IN (${rows.map(() => '?').join(',') || "''"})`).all(...rows.map(r => r.sid))
+    : mem.events.filter(e => e.name.startsWith('share_') && ids.has(e.sid));
+  for (const e of ev) {
+    let kind = { share_whatsapp: 'וואטסאפ', share_native: 'תפריט הטלפון', share_copy: 'קישור' }[e.name] || e.name;
+    if (e.name === 'share_native') { try { if (!JSON.parse(e.meta).done) kind += ' (בוטל)'; } catch {} }
+    const l = shares.get(e.sid) || []; if (!l.includes(kind)) l.push(kind); shares.set(e.sid, l);
+  }
+  return rows.map(r => ({ shares: shares.get(r.sid) || [],
     at: r.started, last: r.last, device: r.device, os: r.os, browser: r.browser,
     ref: r.ref_host || '(ישיר)', path: r.path || '/', activeSec: Math.round((r.active_ms || 0) / 1000),
     scroll: r.max_scroll, live: !!r.used_live, returning: !!r.returning, country: r.country || ''
@@ -230,14 +240,17 @@ export function adStats() {
   const now = Date.now();
   const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const rows = db
-    ? db.prepare("SELECT ts,name,meta FROM events WHERE name IN ('ad_view','ad_click','ad_close','share_whatsapp')").all()
-    : mem.events.filter(e => ['ad_view', 'ad_click', 'ad_close', 'share_whatsapp'].includes(e.name));
+    ? db.prepare("SELECT ts,name,meta FROM events WHERE name IN ('ad_view','ad_click','ad_close','share_whatsapp','share_native','share_copy')").all()
+    : mem.events.filter(e => ['ad_view', 'ad_click', 'ad_close', 'share_whatsapp', 'share_native', 'share_copy'].includes(e.name));
   const out = {};
-  const bucket = k => (out[k] ||= { closes: 0, views: 0, clicks: 0, viewsToday: 0, clicksToday: 0, views7d: 0, clicks7d: 0 });
+  const SHARE = { share_whatsapp: 'share', share_native: 'share_native', share_copy: 'share_copy' };
+  const bucket = k => (out[k] ||= { done: 0, closes: 0, views: 0, clicks: 0, viewsToday: 0, clicksToday: 0, views7d: 0, clicks7d: 0 });
   for (const r of rows) {
-    let ad = 'share';
-    if (r.name !== 'share_whatsapp') { try { ad = String(JSON.parse(r.meta).ad || '?').slice(0, 20); } catch { ad = '?'; } }
+    let ad = SHARE[r.name], meta = {};
+    try { meta = JSON.parse(r.meta) || {}; } catch {}
+    if (!ad) ad = String(meta.ad || '?').slice(0, 20);
     const b = bucket(ad);
+    if (r.name === 'share_native' && meta.done) b.done++;
     if (r.name === 'ad_close') { b.closes++; continue; }
     const kind = r.name === 'ad_view' ? 'views' : 'clicks';
     b[kind]++;

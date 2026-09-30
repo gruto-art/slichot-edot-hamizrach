@@ -160,15 +160,17 @@ function render(d){
   $('#pages').innerHTML='<tr><th>דף</th><th>כניסות</th><th>מבקרים</th><th>היום</th><th>7 ימים</th><th>זמן קריאה ממוצע</th><th>עומק גלילה</th></tr>'+
     (d.breakdown.pages||[]).map(p=>`<tr><td>${esc(PAGE_NAMES[p.k]||p.k)}</td><td>${p.v}</td><td>${p.visitors}</td><td>${p.today}</td><td>${p.last7d}</td><td>${fmt(p.avgActiveSec)}</td><td>${p.avgScroll}%</td></tr>`).join('');
 
-  const AD_NAMES={tech:'עליון — כלים טכנולוגיים לעסקים',danel:'תחתון — דניאל הצעות נישואין',share:'כפתור שיתוף בוואטסאפ'};
+  const AD_NAMES={tech:'עליון — כלים טכנולוגיים לעסקים',danel:'תחתון — דניאל הצעות נישואין',share:'שיתוף בוואטסאפ',share_native:'שיתוף מתפריט הטלפון (אינסטגרם, טלגרם…)',share_copy:'העתקת קישור'};
+const isShare=k=>k.startsWith('share');
   const ctr=(c,v)=>v?(c/v*100).toFixed(1)+'%':'—';
   const ads=d.ads||{};
-  $('#adsTbl').innerHTML='<tr><th>פרסומת</th><th>צפיות היום</th><th>קליקים היום</th><th>צפיות 7 ימים</th><th>קליקים 7 ימים</th><th>סה״כ צפיות</th><th>סה״כ קליקים</th><th>CTR</th><th>הסתרות</th></tr>'+
-    ['tech','danel','share'].map(k=>{const a=ads[k]||{views:0,clicks:0,viewsToday:0,clicksToday:0,views7d:0,clicks7d:0};
-      return `<tr><td>${esc(AD_NAMES[k])}</td><td>${k==='share'?'—':a.viewsToday}</td><td>${a.clicksToday}</td><td>${k==='share'?'—':a.views7d}</td><td>${a.clicks7d}</td><td>${k==='share'?'—':a.views}</td><td>${a.clicks}</td><td>${k==='share'?'—':ctr(a.clicks,a.views)}</td><td>${k==='share'?'—':(a.closes||0)}</td></tr>`;}).join('');
+  $('#adsTbl').innerHTML='<tr><th>פרסומת</th><th>צפיות היום</th><th>קליקים היום</th><th>צפיות 7 ימים</th><th>קליקים 7 ימים</th><th>סה״כ צפיות</th><th>סה״כ קליקים</th><th>CTR</th><th>הסתרות / שיתופים שהושלמו</th></tr>'+
+    ['tech','danel','share','share_native','share_copy'].map(k=>{const a=ads[k]||{views:0,clicks:0,viewsToday:0,clicksToday:0,views7d:0,clicks7d:0};
+      const sh=isShare(k);
+      return `<tr><td>${esc(AD_NAMES[k])}</td><td>${sh?'—':a.viewsToday}</td><td>${a.clicksToday}</td><td>${sh?'—':a.views7d}</td><td>${a.clicks7d}</td><td>${sh?'—':a.views}</td><td>${a.clicks}</td><td>${sh?'—':ctr(a.clicks,a.views)}</td><td>${k==='share_native'?(a.done||0):sh?'—':(a.closes||0)}</td></tr>`;}).join('');
 
-  $('#feed').innerHTML='<tr><th>נכנס</th><th>דף</th><th>מכשיר</th><th>מקור</th><th>זמן פעיל</th><th>גלילה</th><th>מעקב כותל</th></tr>'+
-    d.feed.map(f=>`<tr><td>${new Date(f.at).toLocaleTimeString('he-IL')}</td><td>${esc(PAGE_NAMES[(f.path||'/').replace(/\/+$/,'')||'/']||f.path||'/')}</td><td>${esc(f.device)} · ${esc(f.os)}</td><td>${esc(f.ref)}</td><td>${fmt(f.activeSec)}</td><td>${esc(f.scroll)}%</td><td>${f.live?'✔':'—'}</td></tr>`).join('');
+  $('#feed').innerHTML='<tr><th>נכנס</th><th>דף</th><th>מכשיר</th><th>מקור</th><th>זמן פעיל</th><th>גלילה</th><th>מעקב כותל</th><th>שיתף</th></tr>'+
+    d.feed.map(f=>`<tr><td>${new Date(f.at).toLocaleTimeString('he-IL')}</td><td>${esc(PAGE_NAMES[(f.path||'/').replace(/\/+$/,'')||'/']||f.path||'/')}</td><td>${esc(f.device)} · ${esc(f.os)}</td><td>${esc(f.ref)}</td><td>${fmt(f.activeSec)}</td><td>${esc(f.scroll)}%</td><td>${f.live?'✔':'—'}</td><td>${esc((f.shares||[]).join(', ')||'—')}</td></tr>`).join('');
 }
 function fmt(s){ return s>=60? Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+' דק׳' : s+' שנ׳'; }
 function bars(sel,arr){
