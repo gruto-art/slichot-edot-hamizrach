@@ -122,6 +122,13 @@ const isLocalFile = url => !/^[a-z]+:/i.test(url) && fs.existsSync(url);
 // כל עוד הוא שולח פעימות, השרת אינו מנסה לקלוט בעצמו.
 const REMOTE_TTL_MS = 75000;
 
+/* מצב "רוב הקהל": קול של קורא נספר 20 שניות; פחות מ-10 קוראים פעילים — המצב ממתין */
+const CROWD_TTL_MS = 20000;
+const CROWD_MIN = 10;
+const CROWD_WINDOW = 80;      // רוחב האשכול (במילים) שבו מחפשים איפה רוב הקוראים אוחזים
+const CROWD_PER_IP = 50;      // תקרת קולות מכתובת אחת (רשת בית כנסת / CGNAT) — נגד הטיה מכוונת
+const CROWD_MAX_VOTES = 50000;
+
 // yt-dlp כותב חזרה לקובץ העוגיות אחרי כל ריצה, וקבצי סוד ב-Render הם לקריאה בלבד.
 // לכן מעתיקים לעותק זמני בר-כתיבה, ומרעננים אותו בכל עלייה של השירות.
 function prepareCookies(src) {
@@ -159,6 +166,9 @@ export class KotelEngine {
     setBiasText(doc);
     this.sttWord = -1;   // הזיהוי האחרון מהתמלול (לא כולל התקדמות משוערת)
     this.clients = new Set();
+    this.crowd = new Map();   // sid -> { word, at, ip }
+    this.crowdAt = 0;
+    this.crowdActive = 0;
     this.state = { mode: 'off', word: -1, confidence: 0, section: '', updatedAt: 0, source: '' };
     this.pace = [];   // זיהויים אחרונים, לחישוב קצב אמירה בפועל
     this.slugOf = new Map();
@@ -206,7 +216,7 @@ export class KotelEngine {
     this.sttWord = -1;
     this.pace = [];
     this.tracker.reset();
-    if (this.state.mode !== 'manual') {
+    if (!this.held()) {
       this.state.word = -1;
       this.state.section = '';
       if (hadIngest || this.clients.size) {
@@ -297,6 +307,11 @@ export class KotelEngine {
     if (s.mode === 'off') {
       return { state: 'idle', message: this._idleMessage() };
     }
+    if (s.mode === 'manual') return { state: 'manual', message: 'החזן מוביל את הדף' };
+    if (s.mode === 'crowd' && this.crowdActive < CROWD_MIN) {
+      return { state: 'crowd-wait', message: `הדף עוקב אחרי רוב הקהל — ממתין ל-${CROWD_MIN} מתפללים פעילים לפחות (כרגע ${this.crowdActive}). אפשר לקרוא בקצב שלך.` };
+    }
+    if (s.mode === 'crowd') return { state: 'crowd', message: 'הדף עוקב אחרי רוב הקהל' };
     if (s.mode === 'listening' && s.word < 0) return { state: 'listening' };
     if (s.mode === 'starting') return { state: 'starting' };
     return { state: s.mode };
@@ -364,6 +379,74 @@ export class KotelEngine {
     this.broadcast('position', this._positionPayload());
   }
 
+  /* ---------- מי מוביל את הדף: כותל / חזן (מנהל) / רוב הקהל ---------- */
+  /** מנהל או קהל מובילים — הכותל (תמלול/מזין) אינו מזיז את הדף */
+  held() { return this.state.mode === 'manual' || this.state.mode === 'crowd'; }
+
+  get lead() { return this.state.mode === 'manual' ? 'admin' : this.state.mode === 'crowd' ? 'crowd' : 'kotel'; }
+
+  setLead(lead) {
+    if (lead === this.lead) return;
+    if (lead === 'kotel') {
+      this.state.mode = 'off';
+      this.state.word = -1;
+      this.state.section = '';
+      this.crowdActive = 0;
+      this.tracker.reset();
+      this.pace = [];
+      this.broadcast('status', this._statusPayload());
+      if (this.clients.size) this.start('lead');
+      return;
+    }
+    this.stopIngest();
+    this.pace = [];
+    this.state.mode = lead === 'admin' ? 'manual' : 'crowd';
+    if (lead === 'crowd') { this.state.word = -1; this.crowdActive = 0; this.crowdAt = 0; this._crowdTick(true); }
+    this.broadcast('status', this._statusPayload());
+    if (lead === 'admin' && this.state.word >= 0) this.broadcast('position', this._positionPayload());
+  }
+
+  /** קול של קורא: היכן הוא אוחז כרגע. מחזיר האם מצב הקהל פעיל (כדי שהדפדפן יחסוך שליחות) */
+  crowdVote(sid, word, ip) {
+    if (this.state.mode !== 'crowd') return false;
+    if (!this.crowd.has(sid) && this.crowd.size >= CROWD_MAX_VOTES) return true;
+    this.crowd.set(sid, { word, at: Date.now(), ip });
+    return true;
+  }
+
+  /** מחשב את מקום רוב הקהל: האשכול הצפוף ביותר (ברוחב CROWD_WINDOW מילים), והחציון שבתוכו */
+  _crowdTick(force = false) {
+    const now = Date.now();
+    if (!force && now - this.crowdAt < 2000) return;
+    this.crowdAt = now;
+    const perIp = new Map(), list = [];
+    for (const [sid, v] of this.crowd) {
+      if (now - v.at > CROWD_TTL_MS) { this.crowd.delete(sid); continue; }
+      const n = (perIp.get(v.ip) || 0) + 1;
+      perIp.set(v.ip, n);
+      if (n <= CROWD_PER_IP) list.push(v.word);
+    }
+    if (this.state.mode !== 'crowd') { this.crowd.clear(); return; }
+    const wasEnough = this.crowdActive >= CROWD_MIN, prevCount = this.crowdActive;
+    this.crowdActive = list.length;
+    if (list.length < CROWD_MIN) {
+      if (wasEnough || prevCount !== list.length || force) this.broadcast('status', this._statusPayload());
+      return;
+    }
+    list.sort((a, b) => a - b);
+    let best = [0, 0];
+    for (let lo = 0, hi = 0; hi < list.length; hi++) {
+      while (list[hi] - list[lo] > CROWD_WINDOW) lo++;
+      if (hi - lo > best[1] - best[0]) best = [lo, hi];
+    }
+    const word = list[(best[0] + best[1]) >> 1];
+    const cur = this.state.word;
+    // רעש קטן לאחור לא מקפיץ את הדף; חזרה אמיתית (מעל 20 מילים) כן
+    if (!wasEnough || cur < 0 || word > cur || cur - word > 20) {
+      this.setPosition(word, list.length > 0 ? (best[1] - best[0] + 1) / list.length : 0, 'crowd');
+    }
+  }
+
   /* ---------- שליטה ידנית (גבאי/מנהל) ---------- */
   manual(word) {
     this.state.mode = 'manual';
@@ -377,7 +460,7 @@ export class KotelEngine {
   remoteBeat(ingesting, message = '') {
     const prevMsg = this.remote.message;
     this.remote = { at: Date.now(), ingesting: !!ingesting, message: ingesting ? '' : String(message || '').slice(0, 300) };
-    if (this.state.mode === 'manual') return;
+    if (this.held()) return;
     this.stopIngest();   // הקליטה המקומית נחסמת ממילא; המזין מחליף אותה
     // המזין אינו קולט בכוונה (מחוץ לשעות / אין שידור) — מציגים את הסיבה, לא "מתחבר"
     const mode = ingesting ? 'listening' : (this.remote.message || !this.clients.size ? 'off' : 'starting');
@@ -388,14 +471,14 @@ export class KotelEngine {
   }
 
   remotePosition(word, confidence) {
-    if (this.state.mode === 'manual') return;   // סנכרון הגבאי גובר
+    if (this.held()) return;   // החזן או הקהל מובילים — גוברים על הכותל
     this.remoteBeat(true);
     this.setPosition(word, confidence, 'stt');
   }
 
   /* ---------- הפעלה / כיבוי ---------- */
   start(reason = 'manual') {
-    if (this.state.mode === 'manual') return;
+    if (this.held()) return;
     if (this.remoteAlive()) return this.remoteBeat(this.remote.ingesting, this.remote.message);
     if (!CFG.enabled || !this._hasKey() || (this._auto() && !inWindow()) || this._ended()) {
       this.state.mode = 'off';
@@ -614,6 +697,7 @@ export class KotelEngine {
   /* ---------- פעימה: המשך משוער + כיבוי בהיעדר מאזינים ---------- */
   _tick() {
     const now = Date.now();
+    if (this.state.mode === 'crowd' || this.crowd.size) this._crowdTick();
     if (this.clients.size) this.lastClientAt = now;
     else if ((this.proc.ytdlp || this.proc.ffmpeg) && now - this.lastClientAt > CFG.idleStopMs) {
       console.log('[kotel] אין מאזינים — עוצר קליטה');

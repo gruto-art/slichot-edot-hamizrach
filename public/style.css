@@ -157,6 +157,19 @@ footer a{color:var(--gold)}
 .live-card .x{background:none;border:0;color:var(--ink-soft);font-size:1.2rem;cursor:pointer;line-height:1}
 @media(max-width:560px){.live-card{font-size:.78rem;padding:.6rem .75rem}}
 
+/* ===== פס המנהל: מי מוביל את הדף (מופיע רק במכשיר עם טוקן ניהול) ===== */
+.lead-bar{
+  position:fixed;top:8px;inset-inline:8px;z-index:90;margin:0 auto;max-width:640px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;padding:.45rem .7rem;
+  background:var(--card);border:1px solid var(--gold-soft);border-radius:10px;box-shadow:var(--shadow);font-size:.8rem;
+}
+.lead-bar .lb-t{color:var(--ink-soft)}
+.lead-bar button{font:inherit;background:none;color:var(--fg);border:1px solid var(--rule);border-radius:999px;padding:.2rem .7rem;cursor:pointer}
+.lead-bar button.on{background:var(--gold);border-color:var(--gold);color:var(--paper)}
+.lead-bar .lb-s{flex-basis:100%;color:var(--ink-soft);font-size:.74rem}
+/* שורת הקריאה אצל החזן המוביל: המילה שעליה נשלחת לכולם */
+.lead-line{position:fixed;inset-inline:0;height:0;border-top:2px dashed var(--gold);opacity:.55;pointer-events:none;z-index:60}
+
 /* עימוד סידורי — כל טור בשורה נפרדת */
 l{display:block;text-indent:0;margin-bottom:.18em}
 l:last-child{margin-bottom:0}

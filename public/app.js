@@ -38,7 +38,21 @@
   const liveBtn = $('#liveBtn'), panel = $('#livePanel'), statusEl = $('#liveStatus');
   const words = Array.from(document.querySelectorAll('w[data-i]'));
   const byIndex = new Map(words.map(w => [+w.dataset.i, w]));
+  const posOf = new Map(words.map((w, k) => [+w.dataset.i, k]));
   let es = null, live = false, cur = -1, userScrolledAt = 0, lastEventAt = 0;
+  const READ_LINE = 0.4;   // שורת הקריאה: 40% מגובה המסך — שם המעקב מציב את המילה, ומשם נמדד מקום הקורא
+
+  /** המילה שנמצאת עכשיו בשורת הקריאה (חיפוש בינארי — המילים מסודרות לפי סדר הדף) */
+  function wordAtLine() {
+    if (!words.length) return -1;
+    const y = innerHeight * READ_LINE;
+    let lo = 0, hi = words.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (words[mid].getBoundingClientRect().top <= y) lo = mid; else hi = mid - 1;
+    }
+    return +words[lo].dataset.i;
+  }
 
   // זיהוי גלילה יזומה של המשתמש (ולא של המעקב עצמו) — לפי אירועי קלט בלבד
   const userMoved = () => { if (live) userScrolledAt = Date.now(); };
@@ -75,6 +89,25 @@
     }, 60);
   }
 
+  /* צביעה "נקראת": כשהחזן או הקהל מובילים, המילים נצבעות אחת-אחת עד המקום החדש, בקצב קריאה
+     שמאיץ לפי הפער — ולא קפיצה של כל הדף. חזרה לאחור או קפיצה רחוקה (פרק אחר) — מיידית. */
+  let target = -1, animT = null;
+  function goTo(i, smooth) {
+    target = i;
+    if (!smooth || cur < 0 || i <= cur || !posOf.has(i) || posOf.get(i) - posOf.get(cur) > 250) {
+      clearTimeout(animT); animT = null; paint(i); return;
+    }
+    if (!animT) stepRead();
+  }
+  function stepRead() {
+    animT = null;
+    const from = posOf.get(cur), to = posOf.get(target);
+    if (from == null || to == null || to <= from) return;
+    paint(+words[from + 1].dataset.i);
+    const gap = to - from - 1;
+    if (gap > 0) animT = setTimeout(stepRead, 1000 / Math.max(3.5, gap / 1.2));
+  }
+
   function setStatus(html) { if (statusEl) statusEl.innerHTML = html; }
 
   // חזרה ללשונית: דפדפנים אינם גוללים לשונית מוסתרת — מיישרים את המיקום מחדש
@@ -90,10 +123,13 @@
     es.addEventListener('position', e => {
       lastEventAt = Date.now();
       const d = JSON.parse(e.data);
-      if (typeof d.word === 'number') paint(d.word);
+      const led = d.mode === 'manual' || d.mode === 'crowd';
+      if (typeof d.word === 'number') goTo(d.word, led);
       const conf = d.confidence != null ? Math.round(d.confidence * 100) + '%' : '—';
-      setStatus(`מסונכרן עם הכותל · <strong>${d.section || ''}</strong> · דיוק זיהוי ${conf}` +
-        (d.mode === 'manual' ? ' · סנכרון ידני' : d.mode === 'drift' ? ' · המשך משוער' : ''));
+      if (d.mode === 'manual') setStatus(`עוקב אחרי החזן · <strong>${d.section || ''}</strong>`);
+      else if (d.mode === 'crowd') setStatus(`עוקב אחרי רוב הקהל · <strong>${d.section || ''}</strong>`);
+      else setStatus(`מסונכרן עם הכותל · <strong>${d.section || ''}</strong> · דיוק זיהוי ${conf}` +
+        (d.mode === 'drift' ? ' · המשך משוער' : ''));
     });
     es.addEventListener('status', e => {
       const d = JSON.parse(e.data);
@@ -110,6 +146,7 @@
     liveBtn?.setAttribute('aria-pressed', 'false');
     liveBtn?.classList.remove('on');
     panel?.classList.remove('show');
+    clearTimeout(animT); animT = null; target = -1;
     byIndex.get(cur)?.classList.remove('now');
     document.querySelectorAll('w.past').forEach(w => w.classList.remove('past'));
     cur = -1;
@@ -145,6 +182,83 @@
     fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
   }
   function track(event, extra) { send('/api/event', { vid, sid, event, ...extra }); }
+
+  /* ---------- מצב "רוב הקהל": כל קורא פעיל מדווח היכן הוא אוחז ----------
+     נספר רק מי שקורא בעצמו עכשיו: הלשונית גלויה, נגע בדף בשתי הדקות האחרונות,
+     ואינו נגרר כרגע על ידי המעקב (אחרת הקהל היה עוקב אחרי עצמו ולא זז).
+     כשהמצב כבוי השרת עונה want=false, והדפדפן בודק שוב רק פעם בדקה. */
+  let touchedAt = 0, leading = false;
+  const touched = () => { touchedAt = Date.now(); };
+  ['wheel', 'touchmove', 'scroll', 'keydown'].forEach(ev => addEventListener(ev, touched, { passive: true }));
+  function vote() {
+    let next = 60000;
+    const reading = !document.hidden && Date.now() - touchedAt < 120000 && !leading
+      && (!live || Date.now() - userScrolledAt < 12000);
+    const word = reading ? wordAtLine() : -1;
+    fetch('/api/live/pos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sid, word }) })
+      .then(r => r.json()).then(d => { if (d.want) next = 6000; }).catch(() => {})
+      .finally(() => setTimeout(vote, next));
+  }
+  if (words.length) setTimeout(vote, 4000);
+
+  /* ---------- פס המנהל: מי מוביל את הדף, והובלה בגלילה מהמכשיר הזה ----------
+     מופיע רק במכשיר שנכנס ללוח הבקרה (הטוקן שמור בו) ורק אחרי שהשרת אישר אותו. */
+  const adminToken = store.get('admin_token', '');
+  if (adminToken && words.length) {
+    const api = (url, body) => fetch(url, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'x-admin-token': adminToken, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(r => r.ok ? r.json() : Promise.reject(r.status));
+    const bar = document.createElement('div');
+    bar.className = 'lead-bar';
+    bar.innerHTML = `<span class="lb-t">מוביל הדף:</span>
+      <button data-lead="kotel">כותל</button><button data-lead="admin">חזן — אני</button><button data-lead="crowd">רוב הקהל</button>
+      <span class="lb-s" id="lbStatus"></span>`;
+    const line = document.createElement('div');
+    line.className = 'lead-line';
+    line.style.top = (READ_LINE * 100) + 'vh';
+    let lead = '', lastSent = -1, sendT = null, mark = -1;
+    const lbStatus = () => bar.querySelector('#lbStatus');
+    function show(d) {
+      lead = d.lead;
+      bar.querySelectorAll('[data-lead]').forEach(b => b.classList.toggle('on', b.dataset.lead === lead && (lead !== 'admin' || leading)));
+      if (lead !== 'admin' && leading) setLeading(false);
+      lbStatus().textContent =
+        lead === 'crowd' ? `${d.crowd.active} קוראים פעילים${d.crowd.active < d.crowd.needed ? ` — צריך ${d.crowd.needed}, בינתיים לא זז` : ''} · ${d.listeners} עוקבים`
+        : lead === 'admin' ? (leading ? `הגלילה שלך מובילה · ${d.listeners} עוקבים` : 'החזן מוביל ממכשיר אחר — לחצו "חזן — אני" כדי להוביל מכאן')
+        : `${d.listeners} עוקבים`;
+    }
+    function setLeading(on) {
+      leading = on;
+      document.body.classList.toggle('leading', on);
+      if (on) { document.body.appendChild(line); if (live) stop(); pushScroll(); }
+      else { line.remove(); byIndex.get(mark)?.classList.remove('now'); mark = -1; }
+    }
+    // הגלילה שלי -> המילה בשורת הקריאה -> לשרת, לכל היותר פעמיים בשנייה
+    function pushScroll() {
+      if (!leading || sendT) return;
+      sendT = setTimeout(() => {
+        sendT = null;
+        const w = wordAtLine();
+        if (w !== mark) { byIndex.get(mark)?.classList.remove('now'); byIndex.get(w)?.classList.add('now'); mark = w; }
+        if (w < 0 || w === lastSent) return;
+        lastSent = w;
+        api('/api/live/manual', { word: w, scroll: 1 }).catch(e => { lbStatus().textContent = e === 401 ? 'הטוקן אינו תקף' : 'שליחה נכשלה — מנסה שוב בגלילה הבאה'; lastSent = -1; });
+      }, 450);
+    }
+    addEventListener('scroll', pushScroll, { passive: true });
+    bar.addEventListener('click', e => {
+      const b = e.target.closest('[data-lead]');
+      if (!b) return;
+      const want = b.dataset.lead;
+      if (want === 'admin') { setLeading(true); lastSent = -1; }
+      api('/api/live/lead', { lead: want }).then(d => { show(d); if (want === 'admin') pushScroll(); })
+        .catch(() => { lbStatus().textContent = 'השינוי נכשל'; if (want === 'admin') setLeading(false); });
+    });
+    const poll = () => api('/api/live/lead').then(d => { if (!bar.isConnected) document.body.appendChild(bar); show(d); }).catch(() => {});
+    poll(); setInterval(poll, 5000);
+  }
 
   send('/api/hit', {
     vid, sid, path: location.pathname, ref: document.referrer || '',

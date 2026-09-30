@@ -40,6 +40,7 @@ button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
 .live .st b{color:var(--gold);font-weight:600}
 .live a{color:var(--gold)}
 .warn{color:#e0a040}
+.live button.now{background:var(--gold);color:var(--bg);border-color:var(--gold)}
 .tag{font-size:.7rem;border:1px solid var(--rule);border-radius:999px;padding:.1rem .5rem;color:var(--soft)}
 </style>
 </head>
@@ -54,7 +55,20 @@ button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}
 </header>
 <main>
   <div id="content" style="display:none">
-    <h2 style="margin-top:0">שידור למעקב החי</h2>
+    <h2 style="margin-top:0">מי מוביל את הדף</h2>
+    <div class="live">
+      <div class="row" style="margin-top:0" id="leadBtns">
+        <button data-lead="kotel">הכותל (תמלול השידור)</button>
+        <button data-lead="admin">החזן — גלילה של מנהל</button>
+        <button data-lead="crowd">רוב הקהל</button>
+      </div>
+      <div class="st" id="leadSt" style="margin-top:.7rem">טוען…</div>
+      <p class="muted" style="margin:.7rem 0 0">זה מה שקובע לאן זז הדף אצל כל מי שלחץ "מעקב" באתר.
+      <b>החזן:</b> פתחו את <a href="/" target="_blank">האתר</a> מהמכשיר הזה, לחצו בפס העליון "חזן — אני" וגללו — המילה שעל הקו המקווקו משודרת, ואצל המתפללים היא נצבעת מילה-מילה.
+      <b>רוב הקהל:</b> הדף הולך למקום שבו אוחזים רוב הקוראים הפעילים באתר; פחות מ-10 — הדף לא זז.</p>
+    </div>
+
+    <h2>שידור למעקב החי</h2>
     <div class="live">
       <div class="st" id="liveSt">טוען…</div>
       <div class="row">
@@ -117,7 +131,7 @@ async function load(){
     $('#storeTag').textContent = 'אחסון: '+d.storage;
     $('#upd').textContent = 'עודכן '+new Date(d.now).toLocaleTimeString('he-IL');
     render(d);
-    loadSource(); loadLog();
+    loadSource(); loadLog(); loadLead();
   }catch(e){ $('#msg').textContent='שגיאת רשת: '+e.message; }
 }
 
@@ -166,7 +180,7 @@ function table(sel,head,rows){
     rows.map(r=>`<tr><td>${esc(r.k)}</td><td>${esc(r.v)}</td></tr>`).join('');
 }
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const MODES = {off:'כבוי', starting:'מתחבר', listening:'קולט ומתמלל', manual:'סנכרון גבאי ידני'};
+const MODES = {off:'כבוי', starting:'מתחבר', listening:'קולט ומתמלל', manual:'החזן מוביל (ידני)', crowd:'רוב הקהל מוביל'};
 const KINDS = {override:'קישור מלוח הבקרה', channel:'שידור סליחות חי בערוץ הכותל', camera:'מצלמת רחבת הכותל', none:'—'};
 
 let logSince=0, logLines=[];
@@ -206,6 +220,23 @@ async function setSource(url){
   if(!r.ok) { $('#liveSt').innerHTML = `<span class="warn">${esc(d.error||'שגיאה '+r.status)}</span>`; return; }
   renderSource(d);
 }
+const LEAD_NAMES={kotel:'הכותל',admin:'החזן (גלילת מנהל)',crowd:'רוב הקהל'};
+function renderLead(d){
+  document.querySelectorAll('#leadBtns [data-lead]').forEach(b=>b.classList.toggle('now',b.dataset.lead===d.lead));
+  $('#leadSt').innerHTML=`<b>מוביל עכשיו:</b> ${LEAD_NAMES[d.lead]} · ${d.listeners} עוקבים`+
+    (d.lead==='crowd'?` · ${d.crowd.active} קוראים פעילים${d.crowd.active<d.crowd.needed?` <span class="warn">(צריך ${d.crowd.needed} — הדף לא זז)</span>`:''}`:'')+
+    (d.section?` · עכשיו ב: ${esc(d.section)}`:'');
+}
+async function loadLead(){
+  if(!token) return;
+  const r=await fetch('/api/live/lead',{headers:{'x-admin-token':token}});
+  if(r.ok) renderLead(await r.json());
+}
+document.querySelectorAll('#leadBtns [data-lead]').forEach(b=>b.onclick=async()=>{
+  const r=await fetch('/api/live/lead',{method:'POST',headers:{'x-admin-token':token,'content-type':'application/json'},body:JSON.stringify({lead:b.dataset.lead})});
+  if(r.ok) renderLead(await r.json()); else $('#leadSt').innerHTML=`<span class="warn">השינוי נכשל (${r.status})</span>`;
+});
+setInterval(loadLead,5000);
 $('#srcSet').onclick=()=>{ const u=$('#srcUrl').value.trim(); if(u) setSource(u); };
 $('#srcClear').onclick=()=>{ $('#srcUrl').value=''; setSource(''); };
 

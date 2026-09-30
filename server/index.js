@@ -33,6 +33,17 @@ function addLog(src, msg, at = Date.now()) {
 const SOURCE_FILE = path.join(process.env.DATA_DIR || path.join(root, 'data'), 'live-source.json');
 try { kotel.override = cleanSourceUrl(JSON.parse(fs.readFileSync(SOURCE_FILE, 'utf8')).url); } catch {}
 
+// מי מוביל את הדף (כותל / חזן / רוב הקהל) — נשמר בדיסק, כדי שהתעוררות השירות לא תחזיר לכותל באמצע
+const LEAD_FILE = path.join(process.env.DATA_DIR || path.join(root, 'data'), 'live-lead.json');
+const LEADS = { kotel: 'הכותל', admin: 'החזן (מנהל)', crowd: 'רוב הקהל' };
+try { const l = JSON.parse(fs.readFileSync(LEAD_FILE, 'utf8')).lead; if (LEADS[l]) kotel.setLead(l); } catch {}
+function saveLead() {
+  try {
+    fs.mkdirSync(path.dirname(LEAD_FILE), { recursive: true });
+    fs.writeFileSync(LEAD_FILE, JSON.stringify({ lead: kotel.lead }));
+  } catch (e) { console.warn('[lead] לא נשמר:', e.message); }
+}
+
 /* ---------- אבטחה בסיסית + קאשינג ---------- */
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -59,7 +70,7 @@ function rateLimit(max, windowMs) {
     next();
   };
 }
-const adminLimit = rateLimit(120, 60e3);
+const adminLimit = rateLimit(300, 60e3);   // גלילת החזן שולחת מיקום עד פעמיים בשנייה
 const failLimit = new Map(); // ניסיונות טוקן כושלים לפי IP
 setInterval(() => failLimit.clear(), 15 * 60e3).unref();
 const beaconLimit = rateLimit(3000, 60e3);   // פעימה כל 15 שנ׳ לגולש; כתובת משותפת = הרבה גולשים
@@ -123,8 +134,11 @@ app.post('/api/live/manual', requireAdmin, (req, res) => {
     if (sec) word = sec.paragraphs[0].w[0].i;
   }
   if (!Number.isFinite(word)) return res.status(400).json({ error: 'word or section required' });
+  if (word < 0 || word >= doc.wordCount) return res.status(400).json({ error: 'word out of range' });
+  const wasLead = kotel.lead;
   kotel.manual(word);
-  addLog('אתר', `סנכרון גבאי: מילה ${word} (${kotel.state.section})`);
+  if (wasLead !== 'admin') { saveLead(); addLog('אתר', 'מוביל הדף: החזן (מנהל)'); }
+  if (!req.body?.scroll) addLog('אתר', `סנכרון גבאי: מילה ${word} (${kotel.state.section})`);
   res.json({ ok: true, word, section: kotel.state.section });
 });
 
@@ -188,7 +202,36 @@ app.post('/api/live/control', requireAdmin, (req, res) => {
   if (a === 'start') { kotel.state.mode = 'off'; kotel.start('admin'); }
   else if (a === 'stop') kotel.stop();
   else return res.status(400).json({ error: 'action must be start|stop' });
+  saveLead();
   res.json({ ok: true, mode: kotel.state.mode });
+});
+
+// מי מוביל את הדף אצל כל מי שלחץ "מעקב": kotel | admin | crowd
+const leadStatus = () => ({ lead: kotel.lead, mode: kotel.state.mode, word: kotel.state.word, section: kotel.state.section,
+  listeners: kotel.listeners, crowd: { active: kotel.crowdActive, needed: 10 } });
+app.get('/api/live/lead', requireAdmin, (_req, res) => res.json(leadStatus()));
+app.post('/api/live/lead', requireAdmin, (req, res) => {
+  const lead = req.body?.lead;
+  if (!LEADS[lead]) return res.status(400).json({ error: 'lead must be kotel|admin|crowd' });
+  if (lead !== kotel.lead) {
+    kotel.setLead(lead);
+    saveLead();
+    addLog('אתר', `מוביל הדף: ${LEADS[lead]}`);
+  }
+  res.json(leadStatus());
+});
+
+// קול של קורא למצב "רוב הקהל": היכן הוא אוחז. ציבורי, מוגבל קצב; want=false כשהמצב כבוי
+app.use('/api/live/pos', rateLimit(3000, 60e3), express.text({ type: '*/*', limit: '1kb' }));
+app.post('/api/live/pos', (req, res) => {
+  let b = req.body;
+  if (typeof b === 'string') { try { b = JSON.parse(b); } catch { b = {}; } }
+  const sid = typeof b?.sid === 'string' ? b.sid.slice(0, 64) : '';
+  const word = Number(b?.word);
+  if (!sid || !Number.isInteger(word) || word < 0 || word >= doc.wordCount || isBot(req.get('user-agent') || '')) {
+    return res.json({ want: kotel.lead === 'crowd' });
+  }
+  res.json({ want: kotel.crowdVote(sid, word, req.ip || 'x') });
 });
 
 /* ---------- מדידת כניסות ---------- */
