@@ -12,17 +12,20 @@ const words = t => t.split(' ').map((w, k) => `<i style="--k:${k}">${w}</i>`).jo
 export const ADS = {
   tech: {
     pos: 'top',
-    frameSec: 3, // שניות לכל מסך — קצב שונה לכל באנר
-    theme: 'tech',
-    name: 'כלים טכנולוגיים לעסקים',
-    url: wa(OWNER_WA, 'היי, ראיתי את הפרסומת באתר הסליחות ואשמח לשמוע על כלים טכנולוגיים לעסק שלי'),
-    deco: '<span class="grid"></span><span class="orb"></span><span class="scan"></span>',
+    frameSec: 12, // מסך אחד עם ציר זמן פנימי של 12 שנ׳ (ב-CSS) — אין החלפת מסכים
+    theme: 'wa',
+    name: 'בוט וואטסאפ לעסקים',
+    url: wa(OWNER_WA, 'היי, ראיתי באתר הסליחות את הבוט שעונה ללקוחות באמצע הלילה — אני רוצה כזה לעסק שלי'),
+    deco: '',
+    // הדגמה במקום הבטחה: לקוח כותב ב-04:52, הבוט עונה לבד, ואז המשפט שמחבר לרגע של הקורא (הוא בסליחות).
+    // קריאה לפעולה קבועה בצד — לא מחכה לתורה בסבב.
     frames: [
-      '<span class="fx-type">העסק שלך עדיין עובד ידנית?</span>',
-      '<span class="fx-chips"><i style="--k:0">🤖 בוטים לוואטסאפ</i><i style="--k:1">⚡ אוטומציות</i><i style="--k:2">🧠 בינה מלאכותית</i></span>',
-      '<span class="fx-split"><b>מערכות טלפוניות חכמות</b><em>אתרים שמביאים לקוחות</em></span>',
-      `<span class="fx-glow">${words('כלים טכנולוגיים מתקדמים לעסק שלך')}</span>`,
-      '<span class="fx-cta"><span class="pill"><span class="ring"></span>דברו איתי בוואטסאפ</span><span class="num">052-718-2810</span></span>'
+      '<span class="bz"><span class="bz-stage">'
+        + '<span class="bz-in"><b><s>לקוח חדש · </s>04:52</b>היי, יש תור פנוי מחר?</span>'
+        + '<span class="bz-dots"><i></i><i></i><i></i></span>'
+        + '<span class="bz-out">בטח! 10:00 או 12:30? <u>✓✓</u></span>'
+        + '<span class="bz-punch">הבוט סגר תור — <em>בזמן שאתה בסליחות</em></span>'
+        + '</span><span class="bz-cta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/></svg>אני רוצה כזה</span></span>'
     ]
   },
   danel: {

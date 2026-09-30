@@ -213,8 +213,7 @@ ${adBlock('top', ADSENSE_SLOT_TOP)}
 </nav>
 
 <header class="masthead">
-  <p class="kicker">אַשְׁמוֹרֶת הַבֹּקֶר</p>
-  <h1>סְלִיחוֹת עֲדוֹת הַמִּזְרָח<span class="sub">נוסח ספרדי — סדר מלא ומנוקד</span></h1>
+  <h1 class="h1-big">סְלִיחוֹת<span class="sub">נוסח הכותל — סדר מלא ומנוקד</span></h1>
   <div class="ornament"><span>✦</span></div>
   <p class="lede">כל סדר <strong>סליחות עדות המזרח</strong> — מנוקד ניקוד מלא ומעומד לקריאה, מ״אשרי״ ועד ״שומר ישראל״. ובנוסף: מעקב חי שגולל את המילים לפי מה שאומרים ברגע זה בכותל המערבי.</p>
 </header>
