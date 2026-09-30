@@ -8,3 +8,6 @@ public/robots.txt
 data/.transcripts-*
 *.stt-*.json
 .env.disabled-*
+public/hatarat-kelalot.html
+public/llms.txt
+public/llms-full.txt

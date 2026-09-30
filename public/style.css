@@ -141,6 +141,9 @@ footer a{color:var(--gold)}
 .seo-block h2,.seo-block h3{color:var(--fg)}
 .seo-block h3{font-family:var(--serif);font-size:1.12rem;margin:1.6rem 0 .4rem}
 
+.season-note{max-width:820px;margin:0 auto 1rem;padding:.7rem 1rem;border:1px solid var(--gold-soft);border-radius:10px;background:var(--card);font-size:.95rem;line-height:1.8;text-align:center}
+.season-note strong{color:var(--gold)}
+
 /* ===== לוח מעקב חי ===== */
 .live-panel{
   position:fixed;inset-inline:0;bottom:70px;z-index:70;display:none;

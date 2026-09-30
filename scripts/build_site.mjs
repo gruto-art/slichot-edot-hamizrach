@@ -19,6 +19,41 @@ const ver = f => {
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/* ---------- עונת הסליחות הקרובה: מחושב בכל בנייה מהלוח העברי של Node (בלי ספרייה) ---------- */
+// שנה עברית ותאריך באותיות: 5788 -> תשפ״ח, 1 -> א׳
+function gematria(n) {
+  const L = [[400, 'ת'], [300, 'ש'], [200, 'ר'], [100, 'ק'], [90, 'צ'], [80, 'פ'], [70, 'ע'], [60, 'ס'], [50, 'נ'], [40, 'מ'], [30, 'ל'], [20, 'כ'], [10, 'י'], [9, 'ט'], [8, 'ח'], [7, 'ז'], [6, 'ו'], [5, 'ה'], [4, 'ד'], [3, 'ג'], [2, 'ב'], [1, 'א']];
+  let out = '';
+  for (const [v, c] of L) while (n >= v) {
+    if (n === 15) { out += 'טו'; n = 0; break; }
+    if (n === 16) { out += 'טז'; n = 0; break; }
+    out += c; n -= v;
+  }
+  return out.length > 1 ? out.slice(0, -1) + '״' + out.slice(-1) : out + '׳';
+}
+const hebParts = d => Object.fromEntries(new Intl.DateTimeFormat('en-u-ca-hebrew', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  .formatToParts(d).map(p => [p.type, p.value]));
+const DAY = 864e5;
+function nextSeason(now = new Date()) {
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  let yk = null;
+  for (let t = start; t < start + 400 * DAY; t += DAY) {
+    const p = hebParts(new Date(t));
+    if (p.month === 'Tishri' && p.day === '10') { yk = t; break; }
+  }
+  const rh = yk - 9 * DAY, elul = rh - 29 * DAY;   // אלול תמיד 29 יום
+  const year = Number(hebParts(new Date(yk)).year);
+  const greg = t => new Intl.DateTimeFormat('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(t));
+  return {
+    year: gematria(year % 1000), prevYear: gematria((year - 1) % 1000),
+    elul: greg(elul), rh: greg(rh), erevYk: greg(yk - DAY), yk: greg(yk),
+    elulIso: new Date(elul).toISOString().slice(0, 10), ykIso: new Date(yk).toISOString().slice(0, 10)
+  };
+}
+const SEASON = nextSeason();
+// תאריך עדכון התוכן — לעדכן ידנית כשהטקסט או ההסברים משתנים (גוגל מתעלם מ-lastmod שמשתנה בכל הפעלה)
+const CONTENT_UPDATED = '2026-09-30';
+
 const TITLE = 'סליחות עדות המזרח — תפילת הסליחות בנוסח ספרדי, מלאה ומנוקדת | מעקב חי מהכותל';
 const DESC = 'תפילת הסליחות בנוסח עדות המזרח (ספרדי), הסדר המלא מנוקד ומעומד לקריאה: לך ה׳ הצדקה, י״ג מידות, אשמנו, אדון הסליחות, אבינו מלכנו ושומר ישראל. לכל ימי אלול, לעשרת ימי תשובה ולערב יום כיפור — וכולל מעקב חי אחרי הסליחות בכותל המערבי.';
 const KEYWORDS = 'סליחות עדות המזרח, סליחות ספרדי, סליחות ספרדים, תפילת הסליחות, סדר סליחות, סליחות מנוקד, סליחות אלול, סליחות ערב יום כיפור, סליחות עשרת ימי תשובה, סליחות בכותל, סליחות מהכותל בשידור חי, סליחות לאשמורת הבוקר, מתי אומרים סליחות, לך ה׳ הצדקה, י״ג מידות, אדון הסליחות, אשמנו, אבינו מלכנו, שומר ישראל, טקסט סליחות מלא';
@@ -76,31 +111,46 @@ const plain = doc.sections.slice(0, 6)
   .flatMap(s => s.paragraphs).flatMap(p => p.w).slice(0, 120)
   .map(w => w.t).join(' ');
 
+const FAQ = [
+  ['מהן סליחות עדות המזרח?', 'סליחות עדות המזרח הן סדר תפילות הבקשה והרחמים שנוהגים בני עדות המזרח והספרדים לומר מראש חודש אלול ועד יום הכיפורים, באשמורת הבוקר. הסדר כולל את "לך ה׳ הצדקה", "בן אדם מה לך נרדם", י״ג מידות של רחמים, וידוי, "אדון הסליחות", "אבינו מלכנו" ו"שומר ישראל".'],
+  [`מתי מתחילים לומר סליחות בשנת ${SEASON.year}?`, `לקראת ראש השנה ${SEASON.year} מתחילים בני עדות המזרח לומר סליחות בא׳ באלול ${SEASON.prevYear} — ${SEASON.elul}. אומרים אותן בכל יום (חוץ משבת) עד ערב יום הכיפורים, ${SEASON.erevYk}. ראש השנה חל ב${SEASON.rh}, ויום הכיפורים ב${SEASON.yk}.`],
+  ['מתי מתחילים לומר סליחות בנוסח ספרדי?', 'בני עדות המזרח מתחילים לומר סליחות מראש חודש אלול (א׳ באלול) וממשיכים בכל יום עד יום הכיפורים, בשונה ממנהג אשכנז שמתחיל במוצאי השבת שלפני ראש השנה.'],
+  ['באיזו שעה אומרים סליחות?', 'המנהג המקורי הוא לומר סליחות באשמורת הבוקר, בשליש האחרון של הלילה לפני עלות השחר — שעת רצון מיוחדת, כמו שנאמר "קמתי באשמורת לבקש על עווני".'],
+  ['מה זה מעקב חי אחרי הסליחות בכותל?', 'תכונה באתר שמסנכרנת את הטקסט עם השידור החי של הסליחות מהכותל המערבי: מערכת תמלול בזמן אמת מזהה היכן אוחז החזן, והאתר גולל ומדגיש את המילים המדויקות שנאמרות באותו רגע.'],
+  ['האם אומרים סליחות בערב יום כיפור?', 'כן. ערב יום הכיפורים הוא היום שבו מרבים בסליחות יותר מכל ימות השנה, ובקהילות רבות משכימים אליו במיוחד. בעשרת ימי תשובה ובערב יום כיפור מוסיפים בסליחות קטעים שאינם נאמרים בשאר הימים, ובהם ״למענך אלהי״, ״רחמנא כתבינן בספרא דחיי טבי״ ו״ובספר חיים זכרנו וכתבנו״. באתר זה כל התוספות מסומנות בהוראה שלפניהן.'],
+  ['האם הטקסט מנוקד?', 'כן. כל סדר הסליחות באתר מנוקד ניקוד מלא ומעומד בפריסה נוחה לקריאה, גם במסך הטלפון וגם במחשב, עם אפשרות להגדלת הגופן ומצב לילה.']
+];
+
 const jsonld = [
   {
-    '@context': 'https://schema.org', '@type': 'WebSite',
-    name: 'סליחות עדות המזרח', url: SITE, inLanguage: 'he',
+    '@context': 'https://schema.org', '@type': 'WebSite', '@id': SITE + '/#website',
+    name: 'סליחות עדות המזרח', alternateName: 'סליחות ספרדי', url: SITE, inLanguage: 'he',
     description: DESC,
     potentialAction: { '@type': 'ReadAction', target: SITE }
   },
   {
-    '@context': 'https://schema.org', '@type': 'Book',
-    name: 'סליחות נוסח עדות המזרח', alternateName: ['סליחות ספרדים', 'סדר סליחות עדות המזרח'],
+    '@context': 'https://schema.org', '@type': 'Book', '@id': SITE + '/#slichot',
+    name: 'סליחות נוסח עדות המזרח', dateModified: CONTENT_UPDATED, isPartOf: { '@id': SITE + '/#website' },
+    hasPart: doc.sections.map(sec => ({ '@type': 'Chapter', name: sec.title, url: `${SITE}/#${sec.slug}` })), alternateName: ['סליחות ספרדים', 'סדר סליחות עדות המזרח'],
     inLanguage: 'he', bookFormat: 'https://schema.org/EBook', isAccessibleForFree: true,
     url: SITE, about: 'סדר הסליחות לחודש אלול ולעשרת ימי תשובה במנהג עדות המזרח',
-    genre: 'ליטורגיה יהודית', numberOfPages: 1, abstract: plain.slice(0, 500),
+    genre: 'ליטורגיה יהודית', abstract: plain.slice(0, 500),
     publisher: { '@type': 'Organization', name: 'סליחות עדות המזרח', url: SITE }
   },
   {
+    '@context': 'https://schema.org', '@type': 'Event', name: `סליחות עדות המזרח — עונת ${SEASON.year}`,
+    description: `אמירת סליחות בנוסח עדות המזרח מא׳ באלול ועד ערב יום הכיפורים ${SEASON.year}, באשמורת הבוקר.`,
+    startDate: SEASON.elulIso, endDate: SEASON.ykIso, eventStatus: 'https://schema.org/EventScheduled',
+    eventAttendanceMode: 'https://schema.org/MixedEventAttendanceMode', inLanguage: 'he', isAccessibleForFree: true,
+    location: [
+      { '@type': 'VirtualLocation', url: SITE },
+      { '@type': 'Place', name: 'הכותל המערבי', address: { '@type': 'PostalAddress', addressLocality: 'ירושלים', addressCountry: 'IL' } }
+    ],
+    organizer: { '@type': 'Organization', name: 'סליחות עדות המזרח', url: SITE }
+  },
+  {
     '@context': 'https://schema.org', '@type': 'FAQPage',
-    mainEntity: [
-      ['מהן סליחות עדות המזרח?', 'סליחות עדות המזרח הן סדר תפילות הבקשה והרחמים שנוהגים בני עדות המזרח והספרדים לומר מראש חודש אלול ועד יום הכיפורים, באשמורת הבוקר. הסדר כולל את "לך ה׳ הצדקה", "בן אדם מה לך נרדם", י״ג מידות של רחמים, וידוי, "אדון הסליחות", "אבינו מלכנו" ו"שומר ישראל".'],
-      ['מתי מתחילים לומר סליחות בנוסח ספרדי?', 'בני עדות המזרח מתחילים לומר סליחות מראש חודש אלול (א׳ באלול) וממשיכים בכל יום עד יום הכיפורים, בשונה ממנהג אשכנז שמתחיל במוצאי השבת שלפני ראש השנה.'],
-      ['באיזו שעה אומרים סליחות?', 'המנהג המקורי הוא לומר סליחות באשמורת הבוקר, בשליש האחרון של הלילה לפני עלות השחר — שעת רצון מיוחדת, כמו שנאמר "קמתי באשמורת לבקש על עווני".'],
-      ['מה זה מעקב חי אחרי הסליחות בכותל?', 'תכונה באתר שמסנכרנת את הטקסט עם השידור החי של הסליחות מהכותל המערבי: מערכת תמלול בזמן אמת מזהה היכן אוחז החזן, והאתר גולל ומדגיש את המילים המדויקות שנאמרות באותו רגע.'],
-      ['האם אומרים סליחות בערב יום כיפור?', 'כן. ערב יום הכיפורים הוא היום שבו מרבים בסליחות יותר מכל ימות השנה, ובקהילות רבות משכימים אליו במיוחד. בעשרת ימי תשובה ובערב יום כיפור מוסיפים בסליחות קטעים שאינם נאמרים בשאר הימים, ובהם ״למענך אלהי״, ״רחמנא כתבינן בספרא דחיי טבי״ ו״ובספר חיים זכרנו וכתבנו״. באתר זה כל התוספות מסומנות בהוראה שלפניהן.'],
-      ['האם הטקסט מנוקד?', 'כן. כל סדר הסליחות באתר מנוקד ניקוד מלא ומעומד בפריסה נוחה לקריאה, גם במסך הטלפון וגם במחשב, עם אפשרות להגדלת הגופן ומצב לילה.']
-    ].map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }))
+    mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }))
   }
 ];
 
@@ -165,6 +215,7 @@ ${adBlock('top', ADSENSE_SLOT_TOP)}
 </header>
 
 <main>
+  <p class="season-note"><strong>סליחות ${SEASON.year}:</strong> מתחילים בא׳ באלול — ${SEASON.elul}, ואומרים עד ערב יום הכיפורים, ${SEASON.erevYk}.</p>
   <details class="toc">
     <summary>סדר הסליחות — תוכן העניינים (${doc.sections.length} פרקים)</summary>
     <ol>${toc}</ol>
@@ -191,7 +242,9 @@ ${body}
     <p>לחיצה על ״מעקב אחרי הכותל״ מפעילה סנכרון בזמן אמת: מערכת תמלול מאזינה לשידור החי של הסליחות מרחבת הכותל המערבי, מזהה את המילים הנאמרות ומצליבה אותן מול הטקסט שבאתר. התוצאה — הדף גולל אוטומטית ומדגיש בדיוק את המילה שאומר החזן ברגע זה, כך שאפשר להצטרף לסליחות מכל מקום בעולם בלי לאבד את המקום.</p>
     <h3>נגישות וקריאה</h3>
     <p>הטקסט מעומד בגופן מכובד עם ריווח שורות מוגדל, כדי שהניקוד יישאר קריא גם במסך קטן. אפשר להגדיל ולהקטין את הגופן, ולעבור למצב לילה — נוח במיוחד לאמירת סליחות בשעות הלילה והאשמורת.</p>
-    <p style="font-size:.85rem;margin-top:1.6rem">מקור הטקסט: <a href="${esc(doc.sourceUrl)}" rel="noopener" target="_blank">${esc(doc.source)}</a>. ייתכנו הבדלי נוסח בין קהילות; יש לנהוג כמנהג המקום.</p>
+    <h2>שאלות ותשובות על הסליחות</h2>
+${FAQ.map(([q, a]) => `    <h3>${esc(q)}</h3>\n    <p>${esc(a)}</p>`).join('\n')}
+    <p style="font-size:.85rem;margin-top:1.6rem">עודכן: ${CONTENT_UPDATED.split('-').reverse().join('.')} · מקור הטקסט: <a href="${esc(doc.sourceUrl)}" rel="noopener" target="_blank">${esc(doc.source)}</a>. ייתכנו הבדלי נוסח בין קהילות; יש לנהוג כמנהג המקום.</p>
   </section>
 </main>
 
@@ -245,7 +298,14 @@ const hkHtml = `<!DOCTYPE html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Noto+Serif+Hebrew:wght@400;500;600&family=Rubik:wght@500;800&family=Bellefair&family=Great+Vibes&display=swap">
 <link rel="stylesheet" href="/style.css?v=${ver('style.css')}">
-<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: HK_TITLE, description: HK_DESC, inLanguage: 'he', url: SITE + '/hatarat-kelalot', isPartOf: { '@type': 'WebSite', name: 'סליחות עדות המזרח', url: SITE } })}</script>
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">${JSON.stringify([
+  { '@context': 'https://schema.org', '@type': 'Article', headline: HK_TITLE, description: HK_DESC, inLanguage: 'he', url: SITE + '/hatarat-kelalot',
+    dateModified: CONTENT_UPDATED, isPartOf: { '@id': SITE + '/#website' }, publisher: { '@type': 'Organization', name: 'סליחות עדות המזרח', url: SITE } },
+  { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'סליחות עדות המזרח', item: SITE + '/' },
+    { '@type': 'ListItem', position: 2, name: 'התרת קללות ונדרים', item: SITE + '/hatarat-kelalot' }] }
+])}</script>
 ${ga}
 </head>
 <body>
@@ -295,12 +355,45 @@ Sitemap: ${SITE}/sitemap.xml
 
 // מפת האתר מכילה רק כתובות אמיתיות. עוגנים (#) אינם דפים נפרדים וגוגל
 // מתעלמת מהם — הוספתם רק מייצרת אזהרות.
-const today = new Date().toISOString().slice(0, 10);
+const today = CONTENT_UPDATED;
 fs.writeFileSync(path.join(root, 'public/sitemap.xml'),
 `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url><loc>${SITE}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
 <url><loc>${SITE}/hatarat-kelalot</loc><lastmod>${today}</lastmod><changefreq>yearly</changefreq><priority>0.7</priority></url>
 </urlset>`);
+
+/* ---------- GEO: llms.txt (תקציר ומפה) ו-llms-full.txt (כל הנוסח כטקסט רגיל) ---------- */
+fs.writeFileSync(path.join(root, 'public/llms.txt'),
+`# סליחות עדות המזרח
+
+> ${DESC}
+
+האתר מביא את סדר הסליחות המלא בנוסח עדות המזרח (ספרדי), מנוקד, בחינם, עם מעקב חי שמסנכרן את הטקסט לשידור הסליחות מהכותל המערבי. מקור הטקסט: ${doc.source} (${doc.sourceUrl}).
+
+## עובדות עיקריות
+- עונת ${SEASON.year}: מתחילים בא׳ באלול — ${SEASON.elul}; אומרים עד ערב יום הכיפורים, ${SEASON.erevYk}. ראש השנה: ${SEASON.rh}. יום הכיפורים: ${SEASON.yk}.
+- בני עדות המזרח אומרים סליחות מא׳ באלול, ארבעים יום; במנהג אשכנז מתחילים במוצאי השבת שלפני ראש השנה.
+- הזמן המובחר: אשמורת הבוקר, השליש האחרון של הלילה לפני עלות השחר.
+- הסדר כולל ${doc.sections.length} פרקים ו-${doc.wordCount} מילים, מנוקדים.
+
+## פרקי הסדר
+${doc.sections.map(s => `- [${s.title}](${SITE}/#${s.slug}): ${s.desc}`).join('\n')}
+
+## דפים
+- [סדר הסליחות המלא](${SITE}/): הטקסט המנוקד עם מעקב חי מהכותל
+- [התרת קללות ונדרים](${SITE}/hatarat-kelalot): נוסח עדות המזרח, לערב ראש השנה ולערב יום כיפור
+- [הנוסח המלא כטקסט רגיל](${SITE}/llms-full.txt)
+
+## שאלות ותשובות
+${FAQ.map(([q, a]) => `### ${q}\n${a}`).join('\n\n')}
+`);
+fs.writeFileSync(path.join(root, 'public/llms-full.txt'),
+`# סליחות נוסח עדות המזרח — הנוסח המלא
+מקור: ${doc.source} (${doc.sourceUrl}). ייתכנו הבדלי נוסח בין קהילות.
+אתר: ${SITE}/
+
+` + doc.sections.map(sec => `## ${sec.title}\n${sec.desc}\n\n` + sec.paragraphs.map(p =>
+  (p.dir ? `(${p.dir})\n` : '') + p.w.map(w => w.t).join(' ')).join('\n\n')).join('\n\n'));
 
 console.log('built public/index.html (%d KB), robots.txt, sitemap.xml', Math.round(html.length / 1024));
