@@ -289,16 +289,31 @@
   }
   // החלפת מסכים בבאנרים: כל באנר בקצב שלו (data-fs). הסרת .on והחזרתה מפעילה מחדש את הנפשת הכניסה.
   // לא מחליפים כשהלשונית מוסתרת או כשהבאנר הוסתר — חוסך מעבד בטלפון.
+  // באנר שמחכה לתורו בסבב (hidden) לא מתקדם; כשהוא חוזר הוא מתחיל מהמסך הראשון.
+  const showFrame = (a, n) => { const f = a.querySelectorAll('.af'); f[a._fi || 0].classList.remove('on'); a._fi = n; f[n].classList.add('on'); };
   document.querySelectorAll('.had').forEach(a => {
-    const frames = [...a.querySelectorAll('.af')];
-    if (frames.length < 2) return;
-    let i = 0;
+    const n = a.querySelectorAll('.af').length;
+    if (n < 2) return;
     setInterval(() => {
-      if (document.hidden || a.closest('.ad-hidden')) return;
-      frames[i].classList.remove('on');
-      i = (i + 1) % frames.length;
-      frames[i].classList.add('on');
+      if (document.hidden || a.hidden || a.closest('.ad-hidden')) return;
+      showFrame(a, ((a._fi || 0) + 1) % n);
     }, (Number(a.dataset.fs) || 3) * 1000);
+  });
+  // סבב בין באנרים באותו מיקום: כל אחד מוצג data-cycle שניות. הסתרה והצגה מחדש מפעילות את ההנפשות מההתחלה.
+  document.querySelectorAll('.ad[data-slot]').forEach(box => {
+    const ads = [...box.querySelectorAll('.had')];
+    if (ads.length < 2) return;
+    let cur = 0;
+    const next = () => setTimeout(() => {
+      if (!document.hidden && !box.classList.contains('ad-hidden')) {
+        ads[cur].hidden = true;
+        cur = (cur + 1) % ads.length;
+        if (ads[cur].querySelectorAll('.af').length > 1) showFrame(ads[cur], 0);
+        ads[cur].hidden = false;
+      }
+      next();
+    }, (Number(ads[cur].dataset.cycle) || 15) * 1000);
+    next();
   });
 
   // הסתרת פרסומת: הכפתור מופיע אחרי 30 שניות, ההסתרה נשמרת ל-5 דקות (גם ברענון)
@@ -312,7 +327,7 @@
     if (until > Date.now()) hideFor(until - Date.now()); else show();
     x.addEventListener('click', () => {
       store.set(key, Date.now() + AD_HIDE_MS);
-      const a = box.querySelector('[data-ad]');
+      const a = box.querySelector('[data-ad]:not([hidden])');
       track('ad_close', { meta: { ad: a?.dataset.ad || box.dataset.slot } });
       if (a) ga('ad_close', promo(a));
       hideFor(AD_HIDE_MS);

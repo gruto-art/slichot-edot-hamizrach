@@ -59,17 +59,18 @@ const DESC = 'תפילת הסליחות בנוסח עדות המזרח (ספרד
 const KEYWORDS = 'סליחות עדות המזרח, סליחות ספרדי, סליחות ספרדים, תפילת הסליחות, סדר סליחות, סליחות מנוקד, סליחות אלול, סליחות ערב יום כיפור, סליחות עשרת ימי תשובה, סליחות בכותל, סליחות מהכותל בשידור חי, סליחות לאשמורת הבוקר, מתי אומרים סליחות, לך ה׳ הצדקה, י״ג מידות, אדון הסליחות, אשמנו, אבינו מלכנו, שומר ישראל, טקסט סליחות מלא';
 
 // באנר מונפש: 4–5 מסכים מתחלפים בלולאה (CSS בלבד), מסומן "פרסומת", הקליק עובר דרך /go/:id למעקב
-function houseAd(id, ad) {
+function houseAd(id, ad, hidden = false) {
   // המסך הראשון גלוי גם בלי JS; app.js מחליף מסכים ומפעיל מחדש את הנפשת הכניסה של כל אחד
   const frames = ad.frames.map((f, i) => `<span class="af${i ? '' : ' on'}">${f}</span>`).join('');
   // מידות קבועות נגד קפיצת תוכן (CLS); התחתון נטען בעצלות כדי לא לעכב את הטקסט
   const logo = ad.logo ? `<img class="alogo" src="${esc(ad.logo)}" alt="${esc(ad.logoAlt || ad.name)}" width="${ad.logoW || 40}" height="${ad.logoH || 40}" decoding="async"${ad.pos === 'bottom' ? ' loading="lazy"' : ''}>` : '';
-  return `<a class="had had-${esc(ad.theme || 'plain')}" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" data-ad-name="${esc(ad.name)}" data-ad-slot="${esc(ad.pos)}" data-fs="${ad.frameSec || 3}" aria-label="${esc(ad.name)} — פרסומת"><span class="deco" aria-hidden="true">${ad.deco || ''}</span>${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
+  return `<a class="had had-${esc(ad.theme || 'plain')}" href="/go/${esc(id)}" target="_blank" rel="sponsored nofollow noopener" data-ad="${esc(id)}" data-ad-name="${esc(ad.name)}" data-ad-slot="${esc(ad.pos)}" data-fs="${ad.frameSec || 3}" data-cycle="${ad.cycleSec || 15}"${hidden ? ' hidden' : ''} aria-label="${esc(ad.name)} — פרסומת"><span class="deco" aria-hidden="true">${ad.deco || ''}</span>${logo}<span class="afs">${frames}</span><span class="atag">פרסומת</span></a>`;
 }
 
 function adBlock(pos, slot) {
-  const house = Object.entries(ADS).find(([, a]) => a.pos === pos);
-  if (house) return `<aside class="ad ad-${pos}" aria-label="פרסומת" data-slot="${pos}"><div class="ad-inner">${houseAd(...house)}<button class="ad-x" type="button" hidden aria-label="הסתרת הפרסומת ל-5 דקות" title="הסתרה ל-5 דקות">×</button></div></aside>`;
+  // כמה באנרים באותו מיקום = סבב; הראשון גלוי, השאר מוסתרים עד שתורם מגיע (app.js)
+  const house = Object.entries(ADS).filter(([, a]) => a.pos === pos);
+  if (house.length) return `<aside class="ad ad-${pos}" aria-label="פרסומת" data-slot="${pos}"><div class="ad-inner">${house.map(([id, a], i) => houseAd(id, a, i > 0)).join('')}<button class="ad-x" type="button" hidden aria-label="הסתרת הפרסומת ל-5 דקות" title="הסתרה ל-5 דקות">×</button></div></aside>`;
   const inner = ADSENSE_CLIENT && slot
     ? `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc(ADSENSE_CLIENT)}" data-ad-slot="${esc(slot)}" data-ad-format="horizontal" data-full-width-responsive="true"></ins><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`
     : `<div class="ad-ph">שטח פרסום · ${pos === 'top' ? 'עליון' : 'תחתון'}</div>`;

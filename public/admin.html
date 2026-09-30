@@ -160,12 +160,12 @@ function render(d){
   $('#pages').innerHTML='<tr><th>דף</th><th>כניסות</th><th>מבקרים</th><th>היום</th><th>7 ימים</th><th>זמן קריאה ממוצע</th><th>עומק גלילה</th></tr>'+
     (d.breakdown.pages||[]).map(p=>`<tr><td>${esc(PAGE_NAMES[p.k]||p.k)}</td><td>${p.v}</td><td>${p.visitors}</td><td>${p.today}</td><td>${p.last7d}</td><td>${fmt(p.avgActiveSec)}</td><td>${p.avgScroll}%</td></tr>`).join('');
 
-  const AD_NAMES={tech:'עליון — כלים טכנולוגיים לעסקים',danel:'תחתון — דניאל הצעות נישואין',share:'שיתוף בוואטסאפ',share_native:'שיתוף מתפריט הטלפון (אינסטגרם, טלגרם…)',share_copy:'העתקת קישור'};
+  const AD_NAMES={bot:'עליון — בוט וואטסאפ (סבב)',tech:'עליון — כלים טכנולוגיים (סבב)',call:'עליון — מענה טלפוני (סבב)',danel:'תחתון — דניאל הצעות נישואין',share:'שיתוף בוואטסאפ',share_native:'שיתוף מתפריט הטלפון (אינסטגרם, טלגרם…)',share_copy:'העתקת קישור'};
 const isShare=k=>k.startsWith('share');
   const ctr=(c,v)=>v?(c/v*100).toFixed(1)+'%':'—';
   const ads=d.ads||{};
   $('#adsTbl').innerHTML='<tr><th>פרסומת</th><th>צפיות היום</th><th>קליקים היום</th><th>צפיות 7 ימים</th><th>קליקים 7 ימים</th><th>סה״כ צפיות</th><th>סה״כ קליקים</th><th>CTR</th><th>הסתרות / שיתופים שהושלמו</th></tr>'+
-    ['tech','danel','share','share_native','share_copy'].map(k=>{const a=ads[k]||{views:0,clicks:0,viewsToday:0,clicksToday:0,views7d:0,clicks7d:0};
+    ['bot','tech','call','danel','share','share_native','share_copy'].map(k=>{const a=ads[k]||{views:0,clicks:0,viewsToday:0,clicksToday:0,views7d:0,clicks7d:0};
       const sh=isShare(k);
       return `<tr><td>${esc(AD_NAMES[k])}</td><td>${sh?'—':a.viewsToday}</td><td>${a.clicksToday}</td><td>${sh?'—':a.views7d}</td><td>${a.clicks7d}</td><td>${sh?'—':a.views}</td><td>${a.clicks}</td><td>${sh?'—':ctr(a.clicks,a.views)}</td><td>${k==='share_native'?(a.done||0):sh?'—':(a.closes||0)}</td></tr>`;}).join('');
 
